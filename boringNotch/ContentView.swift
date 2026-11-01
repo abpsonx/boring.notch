@@ -26,6 +26,7 @@ struct ContentView: View {
     @ObservedObject var wellness = WellnessManager.shared
     @ObservedObject var notifications = NotchNotificationManager.shared
     @ObservedObject var downloads = DownloadMonitor.shared
+    @ObservedObject var conversion = ConversionCenter.shared
     @Default(.rainbowVisualizer) var rainbowVisualizer
     @Default(.marqueeInMiddle) var marqueeInMiddle
     @State private var hoverTask: Task<Void, Never>?
@@ -68,6 +69,10 @@ struct ContentView: View {
         (NSScreen.screen(withUUID: coordinator.selectedScreenUUID)?.safeAreaInsets.top ?? 0) > 0
     }
 
+    private var showConversion: Bool {
+        conversion.isActive && vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show
+    }
+
     private var showDownload: Bool {
         downloads.current != nil && vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show
     }
@@ -90,7 +95,7 @@ struct ContentView: View {
             chinWidth = 640
         } else if (wellness.banner != nil || notifications.banner != nil) && vm.notchState == .closed && !vm.hideOnClosed {
             chinWidth = 640
-        } else if showDownload {
+        } else if showConversion || showDownload {
             chinWidth += 140
         } else if showMissedNotifications {
             chinWidth += 80
@@ -163,6 +168,8 @@ struct ContentView: View {
                     .onTapGesture {
                         if vm.notchState == .closed, let notification = notifications.banner {
                             notifications.activate(notification)
+                        } else if vm.notchState == .closed, !conversion.outputs.isEmpty {
+                            conversion.revealOutputs()
                         } else if vm.notchState == .closed, downloads.current?.isFinished == true {
                             downloads.revealCurrent()
                         } else {
@@ -348,6 +355,14 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if showConversion {
+                          ConversionLiveActivity(
+                              phase: conversion.phase,
+                              middleWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight,
+                              showsTextInMiddle: !hasPhysicalNotch
+                          )
+                          .transition(.opacity)
                       } else if showDownload, let download = downloads.current {
                           DownloadLiveActivity(
                               item: download,
@@ -436,6 +451,11 @@ struct ContentView: View {
                     case .notes:
                         QuickNotesView()
                     }
+                }
+                .overlay(alignment: .bottom) {
+                    ConversionStatusBanner()
+                        .padding(.horizontal, 4)
+                        .padding(.bottom, 2)
                 }
                 .transition(
                     .scale(scale: 0.8, anchor: .top)
