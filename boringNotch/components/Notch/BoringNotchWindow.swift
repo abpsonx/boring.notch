@@ -41,7 +41,8 @@ class BoringNotchWindow: NSPanel {
     }
     
     override var canBecomeKey: Bool {
-        false
+        // Only while typing in the Notes tab.
+        NotchKeyboard.allowsKeyboard
     }
     
     override var canBecomeMain: Bool {

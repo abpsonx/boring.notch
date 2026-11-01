@@ -408,6 +408,8 @@ struct ContentView: View {
                         TodayView()
                     case .notifications:
                         NotificationsTabView()
+                    case .notes:
+                        QuickNotesView()
                     }
                 }
                 .transition(

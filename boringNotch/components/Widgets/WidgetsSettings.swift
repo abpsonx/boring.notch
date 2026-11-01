@@ -119,6 +119,36 @@ struct ClipboardSettings: View {
     }
 }
 
+struct NotesSettings: View {
+    @Default(.quickNotesAlertMinutes) var alertMinutes
+    @Default(.quickNotesEventMinutes) var eventMinutes
+
+    var body: some View {
+        Form {
+            Section {
+                Defaults.Toggle(key: .quickNotesEnabled) {
+                    Text("Show Notes tab")
+                }
+            } footer: {
+                Text("Notes are saved on this Mac. Lines starting with \"-\", \"*\", \"•\" or \"1.\" are added as separate tasks to Reminders.")
+            }
+            Section {
+                Picker("Default event length", selection: $eventMinutes) {
+                    ForEach([15, 30, 45, 60, 90, 120], id: \.self) { Text("\($0) min").tag($0) }
+                }
+                Picker("Default alert", selection: $alertMinutes) {
+                    Text("None").tag(0)
+                    ForEach([5, 10, 15, 30, 60], id: \.self) { Text("\($0) min before").tag($0) }
+                }
+            } header: {
+                Text("Calendar")
+            }
+        }
+        .accentColor(.effectiveAccent)
+        .navigationTitle("Notes")
+    }
+}
+
 struct WellnessSettings: View {
     @Default(.breakIntervalMinutes) var breakInterval
     @Default(.breakRepeatMinutes) var breakRepeat
