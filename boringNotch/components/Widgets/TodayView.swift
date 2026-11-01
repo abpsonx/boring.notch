@@ -167,20 +167,29 @@ struct WellnessCard: View {
                     Text("Lagi istirahat")
                         .font(.subheadline.bold())
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     Text("Selesai \(breakEnd, style: .relative)")
                         .font(.caption)
                         .foregroundStyle(.gray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 } else {
                     Text("Layar aktif \(WellnessManager.format(duration: wellness.continuousScreenTime))")
                         .font(.subheadline.bold())
                         .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     Text(breakEnabled
                          ? "Istirahat dalam \(WellnessManager.format(duration: wellness.timeUntilBreak))"
                          : "Pengingat istirahat mati")
                         .font(.caption)
                         .foregroundStyle(.gray)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
             }
+            .layoutPriority(-1)
             Spacer(minLength: 0)
             if wellness.breakEndsAt != nil {
                 pillButton("Selesai", icon: "checkmark") { wellness.endBreakEarly() }
@@ -202,22 +211,28 @@ struct WellnessCard: View {
     private func reminderBanner(_ reminder: WellnessReminder) -> some View {
         HStack(spacing: 10) {
             Image(systemName: reminder.icon)
-                .font(.system(size: 18))
+                .font(.system(size: 15))
                 .foregroundStyle(reminder.kind == .drinkWater ? Color.cyan : Color.orange)
-                .frame(width: 36, height: 36)
+                .frame(width: 30, height: 30)
                 .background(Circle().fill(Color.white.opacity(0.08)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(reminder.title)
                     .font(.subheadline.bold())
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(reminder.kind == .takeBreak
                      ? "Sudah \(reminder.detail) di depan layar"
                      : "Hari ini \(reminder.detail) gelas")
                     .font(.caption)
                     .foregroundStyle(.gray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
+            .layoutPriority(-1)
             Spacer(minLength: 0)
-            pillButton("Nanti", icon: "clock") { wellness.snooze() }
+            pillButton("Nanti", icon: "clock", iconOnly: true) { wellness.snooze() }
+                .help("Ingatkan lagi nanti")
             if reminder.kind == .takeBreak {
                 pillButton("Oke", icon: "checkmark", prominent: true) { wellness.startBreak() }
             } else {
@@ -254,11 +269,19 @@ struct WellnessCard: View {
         }
     }
 
-    private func pillButton(_ title: String, icon: String, prominent: Bool = false, action: @escaping () -> Void) -> some View {
+    private func pillButton(_ title: String, icon: String, prominent: Bool = false, iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
+            Group {
+                if iconOnly {
+                    Image(systemName: icon)
+                } else {
+                    Label(title, systemImage: icon)
+                }
+            }
                 .font(.caption.bold())
-                .padding(.horizontal, 8)
+                .lineLimit(1)
+                .fixedSize()
+                .padding(.horizontal, iconOnly ? 6 : 8)
                 .padding(.vertical, 4)
                 .background(Capsule().fill(prominent ? Color.white.opacity(0.9) : Color.white.opacity(0.1)))
                 .foregroundStyle(prominent ? Color.black : Color.white)
