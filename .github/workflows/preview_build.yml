@@ -49,6 +49,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="" \
             PROVISIONING_PROFILE_SPECIFIER="" \
+            ENABLE_HARDENED_RUNTIME=NO \
             ONLY_ACTIVE_ARCH=NO \
             | tee build.log | grep -E "error:|warning: .*Widgets|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
@@ -80,11 +81,13 @@ jobs:
               find "$APP/Contents/$dir" -maxdepth 1 \( -name '*.xpc' -o -name '*.app' \) -print0 |
                 while IFS= read -r -d '' item; do
                   echo "Signing $item"
-                  codesign --force --sign - --preserve-metadata=entitlements,flags "$item"
+                  codesign --force --sign - --preserve-metadata=entitlements "$item"
                 done
             fi
           done
-          codesign --force --sign - --preserve-metadata=entitlements,flags "$APP"
+          # No hardened runtime: with ad-hoc signing its library validation rejects
+          # every embedded framework ("different Team IDs").
+          codesign --force --sign - --preserve-metadata=entitlements "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv "$APP/Contents/Frameworks/MediaRemoteAdapter.framework" 2>&1 | grep -E "Signature|TeamIdentifier" || true
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
