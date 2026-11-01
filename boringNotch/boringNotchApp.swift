@@ -281,6 +281,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
 
+        // Weather, clipboard history and wellness reminders
+        WeatherManager.shared.start()
+        ClipboardHistoryManager.shared.start()
+        WellnessManager.shared.start()
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenConfigurationDidChange),

@@ -1,0 +1,73 @@
+name: Preview Build (unsigned)
+
+# Builds an unsigned (ad-hoc signed) Boring Notch.app for local testing
+# and uploads it as a downloadable artifact. No certificates or secrets needed.
+
+on:
+  push:
+    branches:
+      - notch-widgets
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build unsigned app
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select newest Xcode
+        run: |
+          XCODE_PATH="$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
+          echo "Using $XCODE_PATH"
+          sudo xcode-select -s "$XCODE_PATH"
+          xcodebuild -version
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project boringNotch.xcodeproj -scheme boringNotch
+
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project boringNotch.xcodeproj \
+            -scheme boringNotch \
+            -configuration Release \
+            -destination "generic/platform=macOS" \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            ONLY_ACTIVE_ARCH=NO \
+            | tee build.log | grep -E "error:|warning: .*Widgets|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-log
+          path: build.log
+
+      - name: Zip app
+        run: |
+          APP="$(find build/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)"
+          echo "Found $APP"
+          ditto -c -k --keepParent "$APP" BoringNotch-preview.zip
+
+      - name: Upload app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: BoringNotch-preview
+          path: BoringNotch-preview.zip

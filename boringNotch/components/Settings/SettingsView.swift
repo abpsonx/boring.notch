@@ -51,6 +51,15 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "Weather") {
+                    Label("Weather", systemImage: "cloud.sun")
+                }
+                NavigationLink(value: "Clipboard") {
+                    Label("Clipboard", systemImage: "doc.on.clipboard")
+                }
+                NavigationLink(value: "Wellness") {
+                    Label("Wellness", systemImage: "heart")
+                }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -85,6 +94,12 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Weather":
+                    WeatherSettings()
+                case "Clipboard":
+                    ClipboardSettings()
+                case "Wellness":
+                    WellnessSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":

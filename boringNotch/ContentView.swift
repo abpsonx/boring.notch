@@ -23,6 +23,7 @@ struct ContentView: View {
     @ObservedObject var batteryModel = BatteryStatusViewModel.shared
     @ObservedObject var brightnessManager = BrightnessManager.shared
     @ObservedObject var volumeManager = VolumeManager.shared
+    @ObservedObject var wellness = WellnessManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -64,6 +65,8 @@ struct ContentView: View {
         if coordinator.expandingView.type == .battery && coordinator.expandingView.show
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
+            chinWidth = 640
+        } else if wellness.banner != nil && vm.notchState == .closed && !vm.hideOnClosed {
             chinWidth = 640
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
@@ -284,6 +287,13 @@ struct ContentView: View {
                             .frame(width: 76, alignment: .trailing)
                         }
                         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
+                      } else if let reminder = wellness.banner, vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show {
+                          WellnessReminderLiveActivity(
+                              reminder: reminder,
+                              notchWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight
+                          )
+                          .transition(.opacity.combined(with: .scale(scale: 0.9)))
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
@@ -349,6 +359,10 @@ struct ContentView: View {
                         NotchHomeView(albumArtNamespace: albumArtNamespace)
                     case .shelf:
                         ShelfView()
+                    case .clipboard:
+                        ClipboardHistoryView()
+                    case .today:
+                        TodayView()
                     }
                 }
                 .transition(
@@ -503,6 +517,10 @@ struct ContentView: View {
     }
 
     private func doOpen() {
+        if wellness.pendingReminder != nil && Defaults[.todayTabEnabled] && vm.notchState == .closed {
+            coordinator.currentView = .today
+            wellness.hideBanner()
+        }
         withAnimation(animationSpring) {
             vm.open()
         }
