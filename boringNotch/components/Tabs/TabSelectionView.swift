@@ -24,6 +24,9 @@ var tabs: [TabModel] {
     if Defaults[.clipboardHistoryEnabled] {
         result.append(TabModel(label: "Clipboard", icon: "doc.on.clipboard.fill", view: .clipboard))
     }
+    if Defaults[.notchNotificationsEnabled] {
+        result.append(TabModel(label: "Notifications", icon: "bell.fill", view: .notifications))
+    }
     if Defaults[.todayTabEnabled] {
         result.append(TabModel(label: "Today", icon: "sun.max.fill", view: .today))
     }

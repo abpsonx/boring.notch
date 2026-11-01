@@ -18,11 +18,16 @@ struct NotificationBannerPayload: Codable {
     let description: String?
     let identifier: String?
     let title: String?
+    /// Custom accessibility actions offered by the banner (e.g. "Reply", "Balas").
+    let actions: [String]
+    let canReply: Bool
 }
 
 enum NotificationBannerReader {
     private static let notificationCenterBundleID = "com.apple.notificationcenterui"
     private static let maxDepth = 14
+    /// Localized names of the banner's reply action.
+    private static let replyKeywords = ["reply", "balas", "respond", "antwort", "répondre", "responder", "rispondi", "返信", "回复", "답장"]
 
     // MARK: - Public
 
@@ -46,6 +51,17 @@ enum NotificationBannerReader {
         return false
     }
 
+    /// Triggers the banner's own inline reply UI (Messages, WhatsApp, ...).
+    static func replyToBanner(withKey key: String) -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        for element in bannerElements() where payload(for: element).key == key {
+            for (target, action) in customActions(in: element) where isReplyAction(action) {
+                if AXUIElementPerformAction(target, action as CFString) == .success { return true }
+            }
+        }
+        return false
+    }
+
     /// Text dump of the NotificationCenter accessibility tree, for troubleshooting.
     static func debugDump() -> String {
         guard AXIsProcessTrusted() else { return "Accessibility permission not granted to the helper." }
@@ -58,7 +74,7 @@ enum NotificationBannerReader {
         }
         lines.append("--- detected banners ---")
         for banner in readBanners() {
-            lines.append("texts=\(banner.texts) desc=\(banner.description ?? "-") id=\(banner.identifier ?? "-") title=\(banner.title ?? "-")")
+            lines.append("texts=\(banner.texts) desc=\(banner.description ?? "-") id=\(banner.identifier ?? "-") title=\(banner.title ?? "-") actions=\(banner.actions) canReply=\(banner.canReply)")
         }
         return lines.joined(separator: "\n")
     }
@@ -125,12 +141,15 @@ enum NotificationBannerReader {
         let identifier: String? = attribute(element, kAXIdentifierAttribute)
         let title: String? = attribute(element, kAXTitleAttribute)
         let key = ([description ?? "", identifier ?? ""] + texts).joined(separator: "\u{1F}")
+        let actionNames = customActions(in: element).map { displayName(of: $0.action) }
         return NotificationBannerPayload(
             key: key,
             texts: texts,
             description: description?.nilIfEmpty,
             identifier: identifier?.nilIfEmpty,
-            title: title?.nilIfEmpty
+            title: title?.nilIfEmpty,
+            actions: actionNames,
+            canReply: actionNames.contains { isReplyAction($0) }
         )
     }
 
@@ -166,6 +185,36 @@ enum NotificationBannerReader {
         for child in children(of: element) {
             dump(child, depth: depth + 1, into: &lines)
         }
+    }
+
+    // MARK: - Actions
+
+    private static let standardActions: Set<String> = [
+        kAXPressAction as String, kAXShowMenuAction as String, kAXCancelAction as String,
+        kAXConfirmAction as String, kAXRaiseAction as String, kAXPickAction as String,
+        kAXIncrementAction as String, kAXDecrementAction as String, "AXScrollToVisible", "AXShowDefaultUI", "AXShowAlternateUI",
+    ]
+
+    /// Non-standard actions on the banner and its direct children.
+    private static func customActions(in element: AXUIElement) -> [(target: AXUIElement, action: String)] {
+        var result: [(AXUIElement, String)] = []
+        for target in [element] + children(of: element) {
+            for action in actions(of: target) where !standardActions.contains(action) {
+                result.append((target, action))
+            }
+        }
+        return result
+    }
+
+    /// Custom actions look like "Name:Reply\nTarget:0x0\nSelector:(null)".
+    private static func displayName(of action: String) -> String {
+        let firstLine = action.components(separatedBy: "\n").first ?? action
+        return firstLine.hasPrefix("Name:") ? String(firstLine.dropFirst(5)) : firstLine
+    }
+
+    private static func isReplyAction(_ action: String) -> Bool {
+        let name = displayName(of: action).lowercased()
+        return replyKeywords.contains { name.contains($0) }
     }
 
     // MARK: - AX helpers

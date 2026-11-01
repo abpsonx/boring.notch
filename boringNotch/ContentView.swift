@@ -60,6 +60,15 @@ struct ContentView: View {
         )
     }
 
+    /// Unread-notification indicator on the closed notch (only when nothing else is shown there).
+    private var showMissedNotifications: Bool {
+        vm.notchState == .closed && !vm.hideOnClosed
+            && notifications.unreadCount > 0 && notifications.banner == nil
+            && Defaults[.notchNotificationsEnabled] && Defaults[.notchNotificationMissedIndicator]
+            && !coordinator.expandingView.show
+            && !(musicManager.isPlaying || !musicManager.isPlayerIdle)
+    }
+
     private var computedChinWidth: CGFloat {
         var chinWidth: CGFloat = vm.closedNotchSize.width
 
@@ -69,6 +78,8 @@ struct ContentView: View {
             chinWidth = 640
         } else if (wellness.banner != nil || notifications.banner != nil) && vm.notchState == .closed && !vm.hideOnClosed {
             chinWidth = 640
+        } else if showMissedNotifications {
+            chinWidth += 80
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
             && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed
@@ -312,6 +323,14 @@ struct ContentView: View {
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
+                      } else if showMissedNotifications {
+                          MissedNotificationsIndicator(
+                              icons: notifications.unreadIcons,
+                              count: notifications.unreadCount,
+                              notchWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight
+                          )
+                          .transition(.opacity)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()
                        } else if vm.notchState == .open {
@@ -375,6 +394,8 @@ struct ContentView: View {
                         ClipboardHistoryView()
                     case .today:
                         TodayView()
+                    case .notifications:
+                        NotificationsTabView()
                     }
                 }
                 .transition(
@@ -532,6 +553,9 @@ struct ContentView: View {
         if wellness.pendingReminder != nil && Defaults[.todayTabEnabled] && vm.notchState == .closed {
             coordinator.currentView = .today
             wellness.hideBanner()
+        } else if notifications.unreadCount > 0 && Defaults[.notchNotificationsEnabled] && vm.notchState == .closed {
+            // Back at the laptop: open straight to the missed notifications.
+            coordinator.currentView = .notifications
         }
         withAnimation(animationSpring) {
             vm.open()

@@ -27,6 +27,12 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         }
     }
 
+    @objc func replyToNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async {
+            reply(NotificationBannerReader.replyToBanner(withKey: key))
+        }
+    }
+
     @objc func notificationDebugDump(with reply: @escaping (String) -> Void) {
         DispatchQueue.main.async {
             reply(NotificationBannerReader.debugDump())

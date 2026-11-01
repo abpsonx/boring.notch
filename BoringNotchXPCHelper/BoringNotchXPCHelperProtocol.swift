@@ -24,6 +24,7 @@ import Foundation
     func currentNotificationBanners(with reply: @escaping (Data?) -> Void)
     func pressNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void)
     func notificationDebugDump(with reply: @escaping (String) -> Void)
+    func replyToNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void)
 }
 
 /*

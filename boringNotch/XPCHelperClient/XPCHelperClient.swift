@@ -276,6 +276,21 @@ final class XPCHelperClient: NSObject {
         }
     }
 
+    nonisolated func replyToNotificationBanner(key: String) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.replyToNotificationBanner(key) { success in
+                    continuation.resume(returning: success)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+
     nonisolated func notificationDebugDump() async -> String {
         do {
             let service = await MainActor.run {

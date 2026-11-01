@@ -19,6 +19,8 @@ struct NotchBannerPayload: Codable {
     let description: String?
     let identifier: String?
     let title: String?
+    let actions: [String]?
+    let canReply: Bool?
 }
 
 struct NotchNotification: Identifiable, Equatable {
@@ -29,6 +31,7 @@ struct NotchNotification: Identifiable, Equatable {
     let bundleURL: URL?
     let title: String
     let body: String
+    var canReply: Bool = false
     let date = Date()
 
     static func == (lhs: NotchNotification, rhs: NotchNotification) -> Bool { lhs.id == rhs.id }
@@ -38,6 +41,7 @@ extension Defaults.Keys {
     static let notchNotificationsEnabled = Key<Bool>("notchNotificationsEnabled", default: false)
     static let notchNotificationDuration = Key<Double>("notchNotificationDuration", default: 6)
     static let notchNotificationShowPreview = Key<Bool>("notchNotificationShowPreview", default: true)
+    static let notchNotificationMissedIndicator = Key<Bool>("notchNotificationMissedIndicator", default: true)
 }
 
 @MainActor
@@ -47,6 +51,8 @@ final class NotchNotificationManager: ObservableObject {
     @Published private(set) var banner: NotchNotification?
     @Published private(set) var history: [NotchNotification] = []
     @Published private(set) var isAuthorized = false
+    /// Notifications that arrived since the Notifications tab was last viewed.
+    @Published private(set) var unreadCount = 0
 
     private var pollTask: Task<Void, Never>?
     private var hideTask: Task<Void, Never>?
@@ -131,9 +137,14 @@ final class NotchNotificationManager: ObservableObject {
         guard !isFirstPoll else { return }
 
         for payload in payloads where !visibleKeys.contains(payload.key) {
-            if let notification = makeNotification(from: payload) {
-                enqueue(notification)
+            guard let notification = makeNotification(from: payload) else { continue }
+            // A banner's text can change (hover, inline reply), which changes its key.
+            // Don't show the same message twice within a minute.
+            let isDuplicate = history.contains {
+                $0.appName == notification.appName && $0.title == notification.title && $0.body == notification.body
+                    && Date().timeIntervalSince($0.date) < 60
             }
+            if !isDuplicate { enqueue(notification) }
         }
     }
 
@@ -141,7 +152,8 @@ final class NotchNotificationManager: ObservableObject {
 
     private func enqueue(_ notification: NotchNotification) {
         history.insert(notification, at: 0)
-        if history.count > 30 { history.removeLast(history.count - 30) }
+        if history.count > 50 { history.removeLast(history.count - 50) }
+        unreadCount += 1
 
         if banner == nil {
             present(notification)
@@ -184,6 +196,54 @@ final class NotchNotificationManager: ObservableObject {
         }
     }
 
+    /// Opens the banner's inline reply (macOS shows its own text field in the banner).
+    func reply(to notification: NotchNotification) {
+        hideTask?.cancel()
+        Task { @MainActor in
+            let ok = await XPCHelperClient.shared.replyToNotificationBanner(key: notification.key)
+            hideBanner()
+            if !ok {
+                // Banner already gone: open the app instead.
+                activate(notification)
+            }
+        }
+    }
+
+    /// Opens the app that posted a notification from the history list.
+    func open(_ notification: NotchNotification) {
+        Task { @MainActor in
+            let pressed = await XPCHelperClient.shared.pressNotificationBanner(key: notification.key)
+            if !pressed, let url = notification.bundleURL {
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) { _, _ in }
+            }
+        }
+    }
+
+    func markAllRead() {
+        unreadCount = 0
+    }
+
+    func remove(_ notification: NotchNotification) {
+        history.removeAll { $0.id == notification.id }
+    }
+
+    func clearHistory() {
+        history.removeAll()
+        unreadCount = 0
+    }
+
+    /// App icons of the unread notifications (newest first, unique apps).
+    var unreadIcons: [NSImage] {
+        var seen = Set<String>()
+        var icons: [NSImage] = []
+        for item in history.prefix(unreadCount) where !seen.contains(item.appName) {
+            seen.insert(item.appName)
+            if let icon = item.appIcon { icons.append(icon) }
+            if icons.count == 3 { break }
+        }
+        return icons
+    }
+
     func previewBanner() {
         enqueue(NotchNotification(
             key: UUID().uuidString,
@@ -191,7 +251,7 @@ final class NotchNotificationManager: ObservableObject {
             appIcon: NSApp.applicationIconImage,
             bundleURL: nil,
             title: "Contoh notifikasi",
-            body: "Notifikasi dari app lain akan tampil seperti ini di notch."
+            body: "Notifikasi dari app lain akan tampil seperti ini di notch. Pesan yang panjang tetap terbaca sampai tiga baris sebelum dipotong."
         ))
     }
 
@@ -225,7 +285,8 @@ final class NotchNotificationManager: ObservableObject {
             appIcon: app?.icon,
             bundleURL: app?.bundleURL,
             title: texts[0],
-            body: texts.dropFirst().joined(separator: " ")
+            body: texts.dropFirst().joined(separator: " "),
+            canReply: payload.canReply ?? false
         )
     }
 
@@ -248,11 +309,13 @@ struct NotchNotificationLiveActivity: View {
     let notchWidth: CGFloat
     let height: CGFloat
     @Default(.notchNotificationShowPreview) var showPreview
+    @ObservedObject var manager = NotchNotificationManager.shared
 
-    private let sideWidth: CGFloat = 150
+    private let sideWidth: CGFloat = 170
+    private var totalWidth: CGFloat { sideWidth * 2 + notchWidth + 10 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
                     if let icon = notification.appIcon {
@@ -275,26 +338,181 @@ struct NotchNotificationLiveActivity: View {
 
                 Text("now")
                     .foregroundStyle(.gray)
-                    .frame(width: 60, alignment: .trailing)
+                    .frame(width: sideWidth, alignment: .trailing)
             }
             .font(.system(size: 12, weight: .medium))
             .frame(height: height, alignment: .center)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(notification.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                if showPreview && !notification.body.isEmpty {
-                    Text(notification.body)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.white.opacity(0.75))
-                        .lineLimit(2)
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(notification.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    if showPreview && !notification.body.isEmpty {
+                        Text(notification.body)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if notification.canReply {
+                    Button {
+                        manager.reply(to: notification)
+                    } label: {
+                        Label("Balas", systemImage: "arrowshape.turn.up.left.fill")
+                            .font(.caption.bold())
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.white.opacity(0.9)))
+                            .foregroundStyle(Color.black)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .frame(width: sideWidth + notchWidth + 10 + 60, alignment: .leading)
-            .padding(.bottom, 10)
+            .frame(width: totalWidth, alignment: .leading)
+            .padding(.bottom, 12)
         }
+        .fixedSize()
+    }
+}
+
+/// Small "missed notifications" indicator for the closed notch: app icons on the
+/// left, bell + count on the right.
+struct MissedNotificationsIndicator: View {
+    let icons: [NSImage]
+    let count: Int
+    let notchWidth: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            HStack(spacing: -6) {
+                ForEach(Array(icons.enumerated()), id: \.offset) { _, icon in
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 16, height: 16)
+                        .background(Circle().fill(.black))
+                }
+                if icons.isEmpty {
+                    Image(systemName: "bell.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 50, alignment: .leading)
+
+            Rectangle()
+                .fill(.black)
+                .frame(width: notchWidth - 20)
+
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 6, height: 6)
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 50, alignment: .trailing)
+        }
+        .frame(height: height, alignment: .center)
+    }
+}
+
+// MARK: - Notifications tab
+
+struct NotificationsTabView: View {
+    @ObservedObject var manager = NotchNotificationManager.shared
+    @Default(.notchNotificationsEnabled) var enabled
+    @Default(.notchNotificationShowPreview) var showPreview
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(manager.history.isEmpty ? "No notifications" : "\(manager.history.count) notifications")
+                    .font(.caption)
+                    .foregroundStyle(.gray)
+                Spacer()
+                if !manager.history.isEmpty {
+                    Button {
+                        withAnimation(.smooth) { manager.clearHistory() }
+                    } label: {
+                        Label("Clear", systemImage: "trash").font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.gray)
+                }
+            }
+
+            if !enabled {
+                placeholder("Turn on notifications in Settings → Notifications")
+            } else if manager.history.isEmpty {
+                placeholder("Notifications that arrive will be listed here")
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(spacing: 6) {
+                        ForEach(manager.history) { item in
+                            row(item)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { manager.markAllRead() }
+        .onChange(of: manager.unreadCount) { _, newValue in
+            if newValue > 0 { manager.markAllRead() }
+        }
+    }
+
+    private func row(_ item: NotchNotification) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            if let icon = item.appIcon {
+                Image(nsImage: icon).resizable().frame(width: 26, height: 26)
+            } else {
+                Image(systemName: "bell.fill")
+                    .frame(width: 26, height: 26)
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                HStack {
+                    Text(item.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(item.date, format: .dateTime.hour().minute())
+                        .font(.system(size: 10))
+                        .foregroundStyle(.gray)
+                }
+                Text(showPreview && !item.body.isEmpty ? item.body : item.appName)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .lineLimit(2)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
+        .contentShape(Rectangle())
+        .onTapGesture { manager.open(item) }
+        .contextMenu {
+            Button("Open \(item.appName)") { manager.open(item) }
+            Button("Remove") { withAnimation(.smooth) { manager.remove(item) } }
+        }
+    }
+
+    private func placeholder(_ text: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: "bell.slash").font(.title2)
+            Text(text).font(.caption)
+        }
+        .foregroundStyle(.gray)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -333,6 +551,9 @@ struct NotchNotificationSettings: View {
             Section {
                 Defaults.Toggle(key: .notchNotificationShowPreview) {
                     Text("Show message preview")
+                }
+                Defaults.Toggle(key: .notchNotificationMissedIndicator) {
+                    Text("Show unread count on the closed notch")
                 }
                 Slider(value: $duration, in: 3...12, step: 1) {
                     Text("Show for \(Int(duration)) seconds")
