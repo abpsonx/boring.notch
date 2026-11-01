@@ -1217,6 +1217,15 @@ struct Appearance: View {
                 Defaults.Toggle(key: .coloredSpectrogram) {
                     Text("Colored spectrogram")
                 }
+                Defaults.Toggle(key: .rainbowVisualizer) {
+                    Text("Rainbow (RGB) visualizer")
+                }
+                Defaults.Toggle(key: .marqueeInMiddle) {
+                    Text("Show song title in the middle (Macs without a notch)")
+                }
+                Defaults.Toggle(key: .downloadProgressEnabled) {
+                    Text("Show download progress")
+                }
                 Defaults
                     .Toggle("Player tinting", key: .playerColorTinting)
                 Defaults.Toggle(key: .lightingEffect) {

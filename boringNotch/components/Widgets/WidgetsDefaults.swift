@@ -17,6 +17,11 @@ enum TemperatureUnit: String, CaseIterable, Identifiable, Defaults.Serializable 
 }
 
 extension Defaults.Keys {
+    // MARK: Music
+    static let rainbowVisualizer = Key<Bool>("rainbowVisualizer", default: true)
+    /// On Macs without a camera notch, scroll the song title through the empty middle.
+    static let marqueeInMiddle = Key<Bool>("marqueeInMiddle", default: true)
+
     // MARK: Weather
     static let weatherEnabled = Key<Bool>("weatherEnabled", default: true)
     /// Empty = detect location automatically from the IP address.

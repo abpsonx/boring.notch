@@ -286,6 +286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         ClipboardHistoryManager.shared.start()
         WellnessManager.shared.start()
         NotchNotificationManager.shared.start()
+        DownloadMonitor.shared.start()
 
         NotificationCenter.default.addObserver(
             self,

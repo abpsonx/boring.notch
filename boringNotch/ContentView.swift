@@ -25,6 +25,9 @@ struct ContentView: View {
     @ObservedObject var volumeManager = VolumeManager.shared
     @ObservedObject var wellness = WellnessManager.shared
     @ObservedObject var notifications = NotchNotificationManager.shared
+    @ObservedObject var downloads = DownloadMonitor.shared
+    @Default(.rainbowVisualizer) var rainbowVisualizer
+    @Default(.marqueeInMiddle) var marqueeInMiddle
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -60,6 +63,15 @@ struct ContentView: View {
         )
     }
 
+    /// True on displays with a camera notch (the middle of the closed notch is hidden by hardware).
+    private var hasPhysicalNotch: Bool {
+        (NSScreen.screen(withUUID: coordinator.selectedScreenUUID)?.safeAreaInsets.top ?? 0) > 0
+    }
+
+    private var showDownload: Bool {
+        downloads.current != nil && vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show
+    }
+
     /// Unread-notification indicator on the closed notch (only when nothing else is shown there).
     private var showMissedNotifications: Bool {
         vm.notchState == .closed && !vm.hideOnClosed
@@ -78,6 +90,8 @@ struct ContentView: View {
             chinWidth = 640
         } else if (wellness.banner != nil || notifications.banner != nil) && vm.notchState == .closed && !vm.hideOnClosed {
             chinWidth = 640
+        } else if showDownload {
+            chinWidth += 140
         } else if showMissedNotifications {
             chinWidth += 80
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
@@ -149,6 +163,8 @@ struct ContentView: View {
                     .onTapGesture {
                         if vm.notchState == .closed, let notification = notifications.banner {
                             notifications.activate(notification)
+                        } else if vm.notchState == .closed, downloads.current?.isFinished == true {
+                            downloads.revealCurrent()
                         } else {
                             doOpen()
                         }
@@ -332,6 +348,15 @@ struct ContentView: View {
                       } else if coordinator.sneakPeek.show && Defaults[.inlineHUD] && (coordinator.sneakPeek.type != .music) && (coordinator.sneakPeek.type != .battery) && vm.notchState == .closed {
                           InlineHUD(type: $coordinator.sneakPeek.type, value: $coordinator.sneakPeek.value, icon: $coordinator.sneakPeek.icon, hoverAnimation: $isHovering, gestureProgress: $gestureProgress)
                               .transition(.opacity)
+                      } else if showDownload, let download = downloads.current {
+                          DownloadLiveActivity(
+                              item: download,
+                              activeCount: downloads.activeCount,
+                              middleWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight,
+                              showsNameInMiddle: !hasPhysicalNotch
+                          )
+                          .transition(.opacity)
                       } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music) && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle) && coordinator.musicLiveActivityEnabled && !vm.hideOnClosed {
                           MusicLiveActivity()
                               .frame(alignment: .center)
@@ -446,6 +471,15 @@ struct ContentView: View {
         )
     }
 
+    /// "Title — Artist" for the middle marquee.
+    private var nowPlayingLine: String {
+        let title = musicManager.songTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artist = musicManager.artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if artist.isEmpty { return title }
+        if title.isEmpty { return artist }
+        return "\(title) — \(artist)"
+    }
+
     @ViewBuilder
     func MusicLiveActivity() -> some View {
         HStack {
@@ -497,6 +531,19 @@ struct ContentView: View {
                                         && Defaults[.sneakPeekStyles] == .inline)
                                         ? 1 : 0
                                 )
+                        } else if marqueeInMiddle && !hasPhysicalNotch && musicManager.isPlaying {
+                            // No camera notch: use the empty middle for "Title — Artist".
+                            MarqueeText(
+                                .constant(nowPlayingLine),
+                                textColor: rainbowVisualizer || !Defaults[.coloredSpectrogram]
+                                    ? Color.white.opacity(0.85)
+                                    : Color(nsColor: musicManager.avgColor).ensureMinimumBrightness(factor: 0.6),
+                                minDuration: 0.5,
+                                frameWidth: max(40, vm.closedNotchSize.width - cornerRadiusInsets.closed.top - 16)
+                            )
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.horizontal, 8)
+                            .transition(.opacity)
                         }
                     }
                 )
@@ -511,12 +558,18 @@ struct ContentView: View {
 
             HStack {
                 if useMusicVisualizer {
-                    Rectangle()
-                        .fill(
-                            Defaults[.coloredSpectrogram]
-                                ? Color(nsColor: musicManager.avgColor).gradient
-                                : Color.gray.gradient
-                        )
+                    Group {
+                        if rainbowVisualizer {
+                            RainbowFill()
+                        } else {
+                            Rectangle()
+                                .fill(
+                                    Defaults[.coloredSpectrogram]
+                                        ? Color(nsColor: musicManager.avgColor).gradient
+                                        : Color.gray.gradient
+                                )
+                        }
+                    }
                         .frame(width: 50, alignment: .center)
                         .matchedGeometryEffect(id: "spectrum", in: albumArtNamespace)
                         .mask {
