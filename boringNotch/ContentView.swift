@@ -279,30 +279,42 @@ struct ContentView: View {
                     if coordinator.expandingView.type == .battery && coordinator.expandingView.show
                         && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
                     {
-                        HStack(spacing: 0) {
-                            HStack {
-                                Text(batteryModel.statusText)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.white)
-                            }
+                        if Defaults[.animatedChargingIndicator] {
+                            ChargingAnimationView(
+                                isPluggedIn: batteryModel.isPluggedIn,
+                                isCharging: batteryModel.isCharging,
+                                level: batteryModel.levelBattery,
+                                statusText: batteryModel.statusText,
+                                notchWidth: vm.closedNotchSize.width,
+                                height: vm.effectiveClosedNotchHeight
+                            )
+                            .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
+                        } else {
+                            HStack(spacing: 0) {
+                                HStack {
+                                    Text(batteryModel.statusText)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.white)
+                                }
 
-                            Rectangle()
-                                .fill(.black)
-                                .frame(width: vm.closedNotchSize.width + 10)
+                                Rectangle()
+                                    .fill(.black)
+                                    .frame(width: vm.closedNotchSize.width + 10)
 
-                            HStack {
-                                BoringBatteryView(
-                                    batteryWidth: 30,
-                                    isCharging: batteryModel.isCharging,
-                                    isInLowPowerMode: batteryModel.isInLowPowerMode,
-                                    isPluggedIn: batteryModel.isPluggedIn,
-                                    levelBattery: batteryModel.levelBattery,
-                                    isForNotification: true
-                                )
+                                HStack {
+                                    BoringBatteryView(
+                                        batteryWidth: 30,
+                                        isCharging: batteryModel.isCharging,
+                                        isInLowPowerMode: batteryModel.isInLowPowerMode,
+                                        isPluggedIn: batteryModel.isPluggedIn,
+                                        levelBattery: batteryModel.levelBattery,
+                                        isForNotification: true
+                                    )
+                                }
+                                .frame(width: 76, alignment: .trailing)
                             }
-                            .frame(width: 76, alignment: .trailing)
+                            .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
                         }
-                        .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
                       } else if let notification = notifications.banner, vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show {
                           NotchNotificationLiveActivity(
                               notification: notification,

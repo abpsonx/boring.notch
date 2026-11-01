@@ -378,6 +378,10 @@ struct Charge: View {
                 Defaults.Toggle(key: .showPowerStatusNotifications) {
                     Text("Show power status notifications")
                 }
+                Defaults.Toggle(key: .animatedChargingIndicator) {
+                    Text("Animated charging indicator")
+                }
+                .disabled(!Defaults[.showPowerStatusNotifications])
             } header: {
                 Text("General")
             }
