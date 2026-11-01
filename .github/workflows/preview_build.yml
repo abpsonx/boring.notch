@@ -60,11 +60,37 @@ jobs:
           name: build-log
           path: build.log
 
-      - name: Zip app
+      - name: Re-sign embedded frameworks ad-hoc
+        # Prebuilt frameworks (e.g. MediaRemoteAdapter) carry the upstream Team ID.
+        # dyld refuses to load them into an ad-hoc signed app ("different Team IDs"),
+        # so sign everything inside the bundle ad-hoc too.
         run: |
+          set -euo pipefail
           APP="$(find build/Build/Products/Release -maxdepth 1 -name '*.app' | head -1)"
           echo "Found $APP"
-          ditto -c -k --keepParent "$APP" BoringNotch-preview.zip
+          if [[ -d "$APP/Contents/Frameworks" ]]; then
+            find "$APP/Contents/Frameworks" -maxdepth 1 \( -name '*.framework' -o -name '*.dylib' \) -print0 |
+              while IFS= read -r -d '' item; do
+                echo "Signing $item"
+                codesign --force --deep --sign - "$item"
+              done
+          fi
+          for dir in XPCServices Library/LoginItems Helpers; do
+            if [[ -d "$APP/Contents/$dir" ]]; then
+              find "$APP/Contents/$dir" -maxdepth 1 \( -name '*.xpc' -o -name '*.app' \) -print0 |
+                while IFS= read -r -d '' item; do
+                  echo "Signing $item"
+                  codesign --force --sign - --preserve-metadata=entitlements,flags "$item"
+                done
+            fi
+          done
+          codesign --force --sign - --preserve-metadata=entitlements,flags "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP/Contents/Frameworks/MediaRemoteAdapter.framework" 2>&1 | grep -E "Signature|TeamIdentifier" || true
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+      - name: Zip app
+        run: ditto -c -k --keepParent "$APP_PATH" BoringNotch-preview.zip
 
       - name: Upload app
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
