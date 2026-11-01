@@ -319,6 +319,23 @@ final class ShelfItemViewModel: ObservableObject {
 
         menu.addItem(NSMenuItem.separator())
         addMenuItem(title: "Share…")
+
+        // Convert files to other formats (PDF → Word/TXT, JPG → PNG, JSON → CSV, …)
+        let convertibleURLs = selectedFileURLs.filter { !isDirectory($0) }
+        if !convertibleURLs.isEmpty, convertibleURLs.count == selectedFileURLs.count {
+            let targets = FileConversionService.commonTargets(for: convertibleURLs)
+            if !targets.isEmpty {
+                let convertMenu = NSMenuItem(title: "Convert to", action: nil, keyEquivalent: "")
+                let convertSubmenu = NSMenu()
+                for target in targets {
+                    let targetItem = NSMenuItem(title: target.title, action: nil, keyEquivalent: "")
+                    targetItem.representedObject = "__CONVERT__:" + target.id
+                    convertSubmenu.addItem(targetItem)
+                }
+                convertMenu.submenu = convertSubmenu
+                menu.addItem(convertMenu)
+            }
+        }
         
         // Add image processing options for image files grouped under "Image Actions"
         let imageURLs = selectedFileURLs.filter { ImageProcessingService.shared.isImageFile($0) }
@@ -417,6 +434,11 @@ final class ShelfItemViewModel: ObservableObject {
 
             if let marker = sender.representedObject as? String, marker == "__OTHER__" {
                 openWithPanel()
+                return
+            }
+
+            if let marker = sender.representedObject as? String, marker.hasPrefix("__CONVERT__:") {
+                handleConvert(targetID: String(marker.dropFirst("__CONVERT__:".count)))
                 return
             }
 
@@ -847,6 +869,40 @@ final class ShelfItemViewModel: ObservableObject {
             }
         }
         
+        /// Converts every selected file and adds the results to the shelf.
+        @MainActor
+        private func handleConvert(targetID: String) {
+            let selected = ShelfSelectionModel.shared.selectedItems(in: ShelfStateViewModel.shared.items)
+            let urls = selected.compactMap { $0.fileURL }
+            guard !urls.isEmpty else { return }
+
+            Task { @MainActor in
+                var newItems: [ShelfItem] = []
+                var failures: [String] = []
+                for url in urls {
+                    let didAccess = url.startAccessingSecurityScopedResource()
+                    defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+                    do {
+                        guard let target = FileConversionService.target(withID: targetID, for: url) else {
+                            throw FileConversionError.unsupported("\(url.lastPathComponent) can't be converted to that format.")
+                        }
+                        let result = try FileConversionService.convert(url, to: target)
+                        if let bookmark = try? Bookmark(url: result) {
+                            newItems.append(ShelfItem(kind: .file(bookmark: bookmark.data), isTemporary: true))
+                        }
+                    } catch {
+                        failures.append("• \(url.lastPathComponent): \(error.localizedDescription)")
+                    }
+                }
+                if !newItems.isEmpty {
+                    ShelfStateViewModel.shared.add(newItems)
+                }
+                if !failures.isEmpty {
+                    showErrorAlert(title: "Conversion Failed", message: failures.joined(separator: "\n"))
+                }
+            }
+        }
+
         @MainActor
         private func showConvertImageDialog() {
             let selected = ShelfSelectionModel.shared.selectedItems(in: ShelfStateViewModel.shared.items)
