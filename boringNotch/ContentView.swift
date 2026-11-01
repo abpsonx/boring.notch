@@ -24,6 +24,7 @@ struct ContentView: View {
     @ObservedObject var brightnessManager = BrightnessManager.shared
     @ObservedObject var volumeManager = VolumeManager.shared
     @ObservedObject var wellness = WellnessManager.shared
+    @ObservedObject var notifications = NotchNotificationManager.shared
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering: Bool = false
     @State private var anyDropDebounceTask: Task<Void, Never>?
@@ -66,7 +67,7 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
-        } else if wellness.banner != nil && vm.notchState == .closed && !vm.hideOnClosed {
+        } else if (wellness.banner != nil || notifications.banner != nil) && vm.notchState == .closed && !vm.hideOnClosed {
             chinWidth = 640
         } else if (!coordinator.expandingView.show || coordinator.expandingView.type == .music)
             && vm.notchState == .closed && (musicManager.isPlaying || !musicManager.isPlayerIdle)
@@ -135,7 +136,11 @@ struct ContentView: View {
                         handleHover(hovering)
                     }
                     .onTapGesture {
-                        doOpen()
+                        if vm.notchState == .closed, let notification = notifications.banner {
+                            notifications.activate(notification)
+                        } else {
+                            doOpen()
+                        }
                     }
                     .conditionalModifier(Defaults[.enableGestures]) { view in
                         view
@@ -287,6 +292,13 @@ struct ContentView: View {
                             .frame(width: 76, alignment: .trailing)
                         }
                         .frame(height: vm.effectiveClosedNotchHeight, alignment: .center)
+                      } else if let notification = notifications.banner, vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show {
+                          NotchNotificationLiveActivity(
+                              notification: notification,
+                              notchWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight
+                          )
+                          .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
                       } else if let reminder = wellness.banner, vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show {
                           WellnessReminderLiveActivity(
                               reminder: reminder,
@@ -543,6 +555,7 @@ struct ContentView: View {
             
             guard vm.notchState == .closed,
                   !coordinator.sneakPeek.show,
+                  notifications.banner == nil,
                   Defaults[.openNotchOnHover] else { return }
             
             hoverTask = Task {

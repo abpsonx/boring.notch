@@ -241,6 +241,55 @@ final class XPCHelperClient: NSObject {
             return false
         }
     }
+
+    // MARK: - Notification banners
+
+    /// JSON-encoded `[NotchBannerPayload]` of the banners macOS is showing right now.
+    nonisolated func currentNotificationBanners() async -> Data? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let result: Data? = try await service.withContinuation { service, continuation in
+                service.currentNotificationBanners { data in
+                    continuation.resume(returning: data)
+                }
+            }
+            return result
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated func pressNotificationBanner(key: String) async -> Bool {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.pressNotificationBanner(key) { success in
+                    continuation.resume(returning: success)
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+
+    nonisolated func notificationDebugDump() async -> String {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            return try await service.withContinuation { service, continuation in
+                service.notificationDebugDump { text in
+                    continuation.resume(returning: text)
+                }
+            }
+        } catch {
+            return "Helper unavailable: \(error.localizedDescription)"
+        }
+    }
 }
 
 extension Notification.Name {

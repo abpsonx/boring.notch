@@ -11,6 +11,27 @@ import IOKit
 import CoreGraphics
 
 class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
+
+    // MARK: - Notification banners
+
+    @objc func currentNotificationBanners(with reply: @escaping (Data?) -> Void) {
+        DispatchQueue.main.async {
+            let banners = NotificationBannerReader.readBanners()
+            reply(try? JSONEncoder().encode(banners))
+        }
+    }
+
+    @objc func pressNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void) {
+        DispatchQueue.main.async {
+            reply(NotificationBannerReader.pressBanner(withKey: key))
+        }
+    }
+
+    @objc func notificationDebugDump(with reply: @escaping (String) -> Void) {
+        DispatchQueue.main.async {
+            reply(NotificationBannerReader.debugDump())
+        }
+    }
     
     @objc func isAccessibilityAuthorized(with reply: @escaping (Bool) -> Void) {
         reply(AXIsProcessTrusted())

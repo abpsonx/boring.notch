@@ -51,6 +51,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Shelf") {
                     Label("Shelf", systemImage: "books.vertical")
                 }
+                NavigationLink(value: "Notifications") {
+                    Label("Notifications", systemImage: "bell.badge")
+                }
                 NavigationLink(value: "Weather") {
                     Label("Weather", systemImage: "cloud.sun")
                 }
@@ -94,6 +97,8 @@ struct SettingsView: View {
                     Charge()
                 case "Shelf":
                     Shelf()
+                case "Notifications":
+                    NotchNotificationSettings()
                 case "Weather":
                     WeatherSettings()
                 case "Clipboard":
