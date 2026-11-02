@@ -148,7 +148,12 @@ final class DownloadMonitor: ObservableObject {
     private struct FolderSnapshot: Sendable {
         let temps: [TempFileInfo]
         let fileNames: Set<String>
+        /// Leftover partial files (cancelled/failed downloads) that haven't changed for a while.
+        let stalePaths: Set<String>
     }
+
+    /// A partial download untouched for this long is treated as abandoned, not in progress.
+    nonisolated private static let staleAfter: TimeInterval = 90
 
     nonisolated private static func readFolder(_ folder: URL, tempExtensions: [String]) -> FolderSnapshot? {
         let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
@@ -157,13 +162,36 @@ final class DownloadMonitor: ObservableObject {
         }
         var temps: [TempFileInfo] = []
         var names = Set<String>()
+        var stale = Set<String>()
+        let now = Date()
         for url in urls {
             names.insert(url.lastPathComponent)
             guard tempExtensions.contains(url.pathExtension.lowercased()) else { continue }
+            if let modified = lastModified(url), now.timeIntervalSince(modified) > staleAfter {
+                stale.insert(url.path)
+                continue
+            }
             let info = progressInfo(for: url)
             temps.append(TempFileInfo(path: url.path, tempName: url.lastPathComponent, finalName: finalName(for: url), bytes: info.bytes, total: info.total))
         }
-        return FolderSnapshot(temps: temps, fileNames: names)
+        return FolderSnapshot(temps: temps, fileNames: names, stalePaths: stale)
+    }
+
+    /// Newest modification time of a file, or of anything inside a Safari ".download" bundle.
+    nonisolated private static func lastModified(_ url: URL) -> Date? {
+        let keys: Set<URLResourceKey> = [.contentModificationDateKey, .isDirectoryKey]
+        guard let values = try? url.resourceValues(forKeys: keys) else { return nil }
+        var newest = values.contentModificationDate
+        if values.isDirectory == true,
+           let children = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: Array(keys), options: []) {
+            for child in children {
+                if let date = try? child.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                   date > (newest ?? .distantPast) {
+                    newest = date
+                }
+            }
+        }
+        return newest
     }
 
     private func apply(_ snapshot: FolderSnapshot?) {
@@ -187,6 +215,8 @@ final class DownloadMonitor: ObservableObject {
         for (id, item) in tracked where !seen.contains(id) {
             tracked[id] = nil
             publishedFractions[URL(fileURLWithPath: id).lastPathComponent] = nil
+            // Went stale (download stalled/abandoned): just hide it.
+            if snapshot.stalePaths.contains(id) { continue }
             if snapshot.fileNames.contains(item.fileName) {
                 showFinished(item, finalURL: downloadsURL.appendingPathComponent(item.fileName))
             }
