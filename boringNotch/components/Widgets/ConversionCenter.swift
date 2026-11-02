@@ -69,7 +69,12 @@ final class ConversionCenter: ObservableObject {
                         throw FileConversionError.unsupported("can't be converted to that format.")
                     }
                     let temporary = try FileConversionService.convert(url, to: target)
-                    results.append(moveToOutputFolder(temporary))
+                    // File moves happen off the main thread so a privacy prompt can't freeze the notch.
+                    let folder = outputFolder
+                    let moved = await Task.detached(priority: .userInitiated) {
+                        Self.moveToOutputFolder(temporary, folder: folder)
+                    }.value
+                    results.append(moved)
                 } catch {
                     failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
                 }
@@ -124,7 +129,7 @@ final class ConversionCenter: ObservableObject {
 
     /// Moves a converted file/folder from the temp folder to ~/Downloads/Converted,
     /// adding " 2", " 3", … if the name is taken. Falls back to the temp location.
-    private func moveToOutputFolder(_ source: URL) -> URL {
+    nonisolated private static func moveToOutputFolder(_ source: URL, folder outputFolder: URL) -> URL {
         let fileManager = FileManager.default
         do {
             try fileManager.createDirectory(at: outputFolder, withIntermediateDirectories: true)

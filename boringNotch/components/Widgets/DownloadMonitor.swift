@@ -119,35 +119,76 @@ final class DownloadMonitor: ObservableObject {
 
     // MARK: - Scanning
 
+    private var isScanning = false
+
+    /// Lists ~/Downloads off the main thread (the first access can wait on the
+    /// macOS privacy prompt, and big folders can be slow) and applies the result.
     private func scan() {
-        let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
-        guard let urls = try? FileManager.default.contentsOfDirectory(at: downloadsURL, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
-            return
+        guard !isScanning else { return }
+        isScanning = true
+        let folder = downloadsURL
+        let extensions = tempExtensions
+        Task.detached(priority: .utility) { [weak self] in
+            let snapshot = Self.readFolder(folder, tempExtensions: extensions)
+            await MainActor.run {
+                self?.apply(snapshot)
+                self?.isScanning = false
+            }
         }
+    }
+
+    private struct TempFileInfo: Sendable {
+        let path: String
+        let tempName: String
+        let finalName: String
+        let bytes: Int64
+        let total: Int64?
+    }
+
+    private struct FolderSnapshot: Sendable {
+        let temps: [TempFileInfo]
+        let fileNames: Set<String>
+    }
+
+    nonisolated private static func readFolder(_ folder: URL, tempExtensions: [String]) -> FolderSnapshot? {
+        let keys: [URLResourceKey] = [.fileSizeKey, .isDirectoryKey]
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
+            return nil
+        }
+        var temps: [TempFileInfo] = []
+        var names = Set<String>()
+        for url in urls {
+            names.insert(url.lastPathComponent)
+            guard tempExtensions.contains(url.pathExtension.lowercased()) else { continue }
+            let info = progressInfo(for: url)
+            temps.append(TempFileInfo(path: url.path, tempName: url.lastPathComponent, finalName: finalName(for: url), bytes: info.bytes, total: info.total))
+        }
+        return FolderSnapshot(temps: temps, fileNames: names)
+    }
+
+    private func apply(_ snapshot: FolderSnapshot?) {
+        guard let snapshot, timer != nil else { return }
 
         var seen = Set<String>()
-        for url in urls where tempExtensions.contains(url.pathExtension.lowercased()) {
-            let id = url.path
-            seen.insert(id)
-            var item = tracked[id] ?? DownloadItem(id: id, fileName: finalName(for: url), bytes: 0)
-            let info = progressInfo(for: url)
+        for info in snapshot.temps {
+            seen.insert(info.path)
+            var item = tracked[info.path] ?? DownloadItem(id: info.path, fileName: info.finalName, bytes: 0)
             item.bytes = info.bytes
             item.total = info.total
             if let total = info.total, total > 0 {
                 item.fraction = min(1, Double(info.bytes) / Double(total))
-            } else if let published = publishedFractions[url.lastPathComponent] {
+            } else if let published = publishedFractions[info.tempName] {
                 item.fraction = published
             }
-            tracked[id] = item
+            tracked[info.path] = item
         }
 
         // Temp files that disappeared: finished (final file exists) or cancelled.
         for (id, item) in tracked where !seen.contains(id) {
             tracked[id] = nil
             publishedFractions[URL(fileURLWithPath: id).lastPathComponent] = nil
-            let finalURL = downloadsURL.appendingPathComponent(item.fileName)
-            if FileManager.default.fileExists(atPath: finalURL.path) {
-                showFinished(item, finalURL: finalURL)
+            if snapshot.fileNames.contains(item.fileName) {
+                showFinished(item, finalURL: downloadsURL.appendingPathComponent(item.fileName))
             }
         }
 
@@ -187,14 +228,14 @@ final class DownloadMonitor: ObservableObject {
 
     // MARK: - Helpers
 
-    private func finalName(for url: URL) -> String {
+    nonisolated private static func finalName(for url: URL) -> String {
         var name = url.deletingPathExtension().lastPathComponent
         // Chrome: "Unconfirmed 12345.crdownload" before the name is known.
         if name.hasPrefix("Unconfirmed ") { name = "Downloading…" }
         return name
     }
 
-    private func progressInfo(for url: URL) -> (bytes: Int64, total: Int64?) {
+    nonisolated private static func progressInfo(for url: URL) -> (bytes: Int64, total: Int64?) {
         let ext = url.pathExtension.lowercased()
         if ext == "download" {
             // Safari bundle: Info.plist holds the byte counts.
@@ -210,7 +251,7 @@ final class DownloadMonitor: ObservableObject {
         return (size, nil)
     }
 
-    private func directorySize(_ url: URL) -> Int64 {
+    nonisolated private static func directorySize(_ url: URL) -> Int64 {
         guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
         var total: Int64 = 0
         for case let file as URL in enumerator {
