@@ -209,6 +209,24 @@ private struct ExtraColumn: View {
                 }
             }
 
+            if !google.isConnected && !Defaults[.googleAccountEmail].isEmpty {
+                // Signed out by Google (e.g. the 7-day limit while the OAuth app is in Testing).
+                Button {
+                    google.connect()
+                } label: {
+                    Label(google.isBusy ? "Menunggu browser…" : "Google Tasks terputus · Sambungkan ulang", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.orange.opacity(0.2)))
+                        .foregroundStyle(Color.orange)
+                }
+                .buttonStyle(.plain)
+                .disabled(google.isBusy)
+            }
+
             HStack(spacing: 4) {
                 QuickAddField(placeholder: addToGoogle ? "Tambah ke Google Tasks…" : "14:00 Job tambahan… (jam opsional)", text: $input, focused: $focused) {
                     submit()
@@ -638,7 +656,7 @@ private struct GoogleTasksSettingsSection: View {
         } footer: {
             if !google.isConnected {
                 Text("""
-                One-time setup (free): in Google Cloud Console create a project → APIs & Services → enable "Google Tasks API" → OAuth consent screen (External, add your Gmail as a test user) → Credentials → Create OAuth client ID → type "Desktop app". Paste the Client ID and Secret here and click Connect; sign in with Google in your browser.
+                One-time setup (free): in Google Cloud Console create a project → enable "Google Tasks API" → Google Auth Platform (External; add every Gmail you'll sign in with as a Test user) → Clients → Create client → "Desktop app". Paste the Client ID and Secret here and click Connect. The same Client ID works on all your Macs. While the app is in Testing, Google signs you out every 7 days; the Tasks tab then shows a "Sambungkan ulang" button.
                 """)
             }
         }

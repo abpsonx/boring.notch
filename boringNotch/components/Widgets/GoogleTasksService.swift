@@ -159,6 +159,7 @@ final class GoogleTasksManager: ObservableObject {
         isConnected = false
         lists = []
         tasks = []
+        CalendarManager.shared.refreshGoogleTasks()
         Defaults[.googleAccountEmail] = ""
         refreshTimer?.invalidate()
         refreshTimer = nil
@@ -226,6 +227,7 @@ final class GoogleTasksManager: ObservableObject {
             tasks = collected
             lastSync = Date()
             lastError = nil
+            CalendarManager.shared.refreshGoogleTasks()
         } catch {
             lastError = error.localizedDescription
         }
@@ -237,6 +239,7 @@ final class GoogleTasksManager: ObservableObject {
             tasks[index].isCompleted = done
             tasks[index].completedAt = done ? Date() : nil
         }
+        CalendarManager.shared.refreshGoogleTasks()
         Task {
             do {
                 let body: [String: Any] = done ? ["status": "completed"] : ["status": "needsAction", "completed": NSNull()]

@@ -79,20 +79,20 @@ class CalendarManager: ObservableObject {
             self.calendarAuthorizationStatus = granted ? .fullAccess : .denied
             if granted {
                 await reloadCalendarAndReminderLists()
-                events = await calendarService.events(
+                publish(await calendarService.events(
                     from: currentWeekStartDate,
                     to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
-                    calendars: selectedCalendars.map { $0.id })
+                    calendars: selectedCalendars.map { $0.id }))
             }
         case .restricted, .denied:
             NSLog("Calendar access denied or restricted")
         case .fullAccess:
             NSLog("Full access")
             await reloadCalendarAndReminderLists()
-            events = await calendarService.events(
+            publish(await calendarService.events(
                 from: currentWeekStartDate,
                 to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
-                calendars: selectedCalendars.map { $0.id })
+                calendars: selectedCalendars.map { $0.id }))
         case .writeOnly:
             NSLog("Write only")
         @unknown default:
@@ -190,15 +190,74 @@ class CalendarManager: ObservableObject {
             to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
             calendars: calendarIDs
         )
-        self.events = eventsResult
+        publish(eventsResult)
+    }
+
+    // MARK: Google Tasks in the calendar
+
+    /// Events from macOS calendars, before Google Tasks are merged in.
+    private var baseEvents: [EventModel] = []
+
+    private func publish(_ base: [EventModel]) {
+        baseEvents = base
+        events = Self.merge(base, googleTasksOn: currentWeekStartDate)
+    }
+
+    /// Re-merge after Google Tasks were synced or toggled.
+    func refreshGoogleTasks() {
+        events = Self.merge(baseEvents, googleTasksOn: currentWeekStartDate)
+    }
+
+    static let googleTaskPrefix = "google-task:"
+
+    /// Google tasks due on `day`, shown like reminders.
+    private static func merge(_ base: [EventModel], googleTasksOn day: Date) -> [EventModel] {
+        let google = GoogleTasksManager.shared
+        guard google.isConnected else { return base }
+        let calendar = Calendar.current
+        let googleCalendar = CalendarModel(
+            id: "google-tasks", account: "Google", title: "Google Tasks",
+            color: .systemBlue, isSubscribed: false, isReminder: true
+        )
+        let tasks = google.tasks.filter { task in
+            guard let due = task.due else { return false }
+            return calendar.isDate(due, inSameDayAs: day)
+        }
+        let models = tasks.map { task in
+            EventModel(
+                id: googleTaskPrefix + task.id,
+                start: calendar.startOfDay(for: day),
+                end: calendar.startOfDay(for: day),
+                title: task.title,
+                location: nil,
+                notes: task.notes,
+                url: nil,
+                isAllDay: true,
+                type: .reminder(completed: task.isCompleted),
+                calendar: googleCalendar,
+                participants: [],
+                timeZone: nil,
+                hasRecurrenceRules: false,
+                priority: nil
+            )
+        }
+        return (base + models).sorted { $0.start < $1.start }
     }
     
     func setReminderCompleted(reminderID: String, completed: Bool) async {
+        if reminderID.hasPrefix(Self.googleTaskPrefix) {
+            let id = String(reminderID.dropFirst(Self.googleTaskPrefix.count))
+            if let task = GoogleTasksManager.shared.tasks.first(where: { $0.id == id }), task.isCompleted != completed {
+                GoogleTasksManager.shared.toggle(task)
+            }
+            refreshGoogleTasks()
+            return
+        }
         await calendarService.setReminderCompleted(reminderID: reminderID, completed: completed)
         // Refresh events after updating
-        events = await calendarService.events(
+        publish(await calendarService.events(
             from: currentWeekStartDate,
             to: Calendar.current.date(byAdding: .day, value: 1, to: currentWeekStartDate)!,
-            calendars: selectedCalendars.map { $0.id })
+            calendars: selectedCalendars.map { $0.id }))
     }
 }
