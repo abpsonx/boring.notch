@@ -44,22 +44,27 @@ struct BoringHeader: View {
                     } else {
                         if Defaults[.weatherEnabled] && Defaults[.showWeatherInHeader] {
                             WeatherHeaderChip()
+                                .fixedSize()
                         }
                         if Defaults[.showMirror] {
                             Button(action: {
+                                // The mirror lives on the Home tab: switch there when turning it on.
+                                if !vm.isCameraExpanded {
+                                    withAnimation(.smooth) { coordinator.currentView = .home }
+                                }
                                 vm.toggleCameraPreview()
                             }) {
                                 Capsule()
-                                    .fill(.black)
-                                    .frame(width: 30, height: 30)
+                                    .fill(vm.isCameraExpanded ? Color.white.opacity(0.2) : .black)
+                                    .frame(width: 26, height: 26)
                                     .overlay {
                                         Image(systemName: "web.camera")
                                             .foregroundColor(.white)
-                                            .padding()
-                                            .imageScale(.medium)
+                                            .imageScale(.small)
                                     }
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .help("Mirror")
                         }
                         if Defaults[.showCleanerButton] {
                             Button(action: {
@@ -69,12 +74,11 @@ struct BoringHeader: View {
                             }) {
                                 Capsule()
                                     .fill(coordinator.currentView == .cleaner ? Color.white.opacity(0.2) : .black)
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: 26, height: 26)
                                     .overlay {
                                         Image(systemName: "sparkles")
                                             .foregroundColor(.white)
-                                            .padding()
-                                            .imageScale(.medium)
+                                            .imageScale(.small)
                                     }
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -89,12 +93,11 @@ struct BoringHeader: View {
                             }) {
                                 Capsule()
                                     .fill(.black)
-                                    .frame(width: 30, height: 30)
+                                    .frame(width: 26, height: 26)
                                     .overlay {
                                         Image(systemName: "gear")
                                             .foregroundColor(.white)
-                                            .padding()
-                                            .imageScale(.medium)
+                                            .imageScale(.small)
                                     }
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -110,6 +113,7 @@ struct BoringHeader: View {
                                 timeToFullCharge: batteryModel.timeToFullCharge,
                                 isForNotification: false
                             )
+                            .fixedSize()
                         }
                     }
                 }
