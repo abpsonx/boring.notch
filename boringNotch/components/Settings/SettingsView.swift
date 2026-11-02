@@ -66,6 +66,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Wellness") {
                     Label("Wellness", systemImage: "heart")
                 }
+                NavigationLink(value: "Cleaner") {
+                    Label("Cleaner", systemImage: "trash.circle")
+                }
                 NavigationLink(value: "Shortcuts") {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
@@ -110,6 +113,8 @@ struct SettingsView: View {
                     ClipboardSettings()
                 case "Wellness":
                     WellnessSettings()
+                case "Cleaner":
+                    CacheCleanerSettings()
                 case "Shortcuts":
                     Shortcuts()
                 case "Extensions":

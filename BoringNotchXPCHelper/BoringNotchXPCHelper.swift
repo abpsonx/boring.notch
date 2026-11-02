@@ -27,6 +27,21 @@ class BoringNotchXPCHelper: NSObject, BoringNotchXPCHelperProtocol {
         }
     }
 
+    // MARK: - Cache cleaner
+
+    @objc func scanUserCaches(_ includeApple: Bool, with reply: @escaping (Data?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            reply(try? JSONEncoder().encode(CacheCleaner.scan(includeApple: includeApple)))
+        }
+    }
+
+    @objc func removeUserCaches(_ pathsJSON: Data, permanently: Bool, with reply: @escaping (Data?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let paths = (try? JSONDecoder().decode([String].self, from: pathsJSON)) ?? []
+            reply(try? JSONEncoder().encode(CacheCleaner.remove(paths: paths, permanently: permanently)))
+        }
+    }
+
     @objc func replyToNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void) {
         DispatchQueue.main.async {
             reply(NotificationBannerReader.replyToBanner(withKey: key))

@@ -25,6 +25,9 @@ import Foundation
     func pressNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void)
     func notificationDebugDump(with reply: @escaping (String) -> Void)
     func replyToNotificationBanner(_ key: String, with reply: @escaping (Bool) -> Void)
+    // ~/Library/Caches cleaner (paths are JSON-encoded [String]; results are JSON)
+    func scanUserCaches(_ includeApple: Bool, with reply: @escaping (Data?) -> Void)
+    func removeUserCaches(_ pathsJSON: Data, permanently: Bool, with reply: @escaping (Data?) -> Void)
 }
 
 /*

@@ -291,6 +291,39 @@ final class XPCHelperClient: NSObject {
         }
     }
 
+    nonisolated func scanUserCaches(includeApple: Bool) async -> Data? {
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let result: Data? = try await service.withContinuation { service, continuation in
+                service.scanUserCaches(includeApple) { data in
+                    continuation.resume(returning: data)
+                }
+            }
+            return result
+        } catch {
+            return nil
+        }
+    }
+
+    nonisolated func removeUserCaches(paths: [String], permanently: Bool) async -> Data? {
+        guard let json = try? JSONEncoder().encode(paths) else { return nil }
+        do {
+            let service = await MainActor.run {
+                ensureRemoteService()
+            }
+            let result: Data? = try await service.withContinuation { service, continuation in
+                service.removeUserCaches(json, permanently: permanently) { data in
+                    continuation.resume(returning: data)
+                }
+            }
+            return result
+        } catch {
+            return nil
+        }
+    }
+
     nonisolated func notificationDebugDump() async -> String {
         do {
             let service = await MainActor.run {
