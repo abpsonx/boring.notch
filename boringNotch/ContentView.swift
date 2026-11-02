@@ -24,6 +24,7 @@ struct ContentView: View {
     @ObservedObject var brightnessManager = BrightnessManager.shared
     @ObservedObject var volumeManager = VolumeManager.shared
     @ObservedObject var wellness = WellnessManager.shared
+    @ObservedObject var tasks = TasksManager.shared
     @ObservedObject var notifications = NotchNotificationManager.shared
     @ObservedObject var downloads = DownloadMonitor.shared
     @ObservedObject var conversion = ConversionCenter.shared
@@ -93,7 +94,7 @@ struct ContentView: View {
             && vm.notchState == .closed && Defaults[.showPowerStatusNotifications]
         {
             chinWidth = 640
-        } else if (wellness.banner != nil || notifications.banner != nil) && vm.notchState == .closed && !vm.hideOnClosed {
+        } else if (wellness.banner != nil || notifications.banner != nil || tasks.banner != nil) && vm.notchState == .closed && !vm.hideOnClosed {
             chinWidth = 640
         } else if showConversion || showDownload {
             chinWidth += 140
@@ -345,6 +346,13 @@ struct ContentView: View {
                               height: vm.effectiveClosedNotchHeight
                           )
                           .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
+                      } else if let reminder = tasks.banner, vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show {
+                          TaskReminderLiveActivity(
+                              reminder: reminder,
+                              notchWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight
+                          )
+                          .transition(.opacity.combined(with: .scale(scale: 0.9)))
                       } else if let reminder = wellness.banner, vm.notchState == .closed && !vm.hideOnClosed && !coordinator.sneakPeek.show {
                           WellnessReminderLiveActivity(
                               reminder: reminder,
@@ -452,6 +460,8 @@ struct ContentView: View {
                         QuickNotesView()
                     case .cleaner:
                         NotchCleanerView()
+                    case .tasks:
+                        TasksView()
                     }
                 }
                 .overlay(alignment: .bottom) {
@@ -639,7 +649,11 @@ struct ContentView: View {
     }
 
     private func doOpen() {
-        if wellness.pendingReminder != nil && Defaults[.todayTabEnabled] && vm.notchState == .closed {
+        if tasks.pending != nil && Defaults[.tasksEnabled] && vm.notchState == .closed {
+            // A job is due: open straight to Tasks with Selesai / Tunda.
+            coordinator.currentView = .tasks
+            tasks.hideBanner()
+        } else if wellness.pendingReminder != nil && Defaults[.todayTabEnabled] && vm.notchState == .closed {
             coordinator.currentView = .today
             wellness.hideBanner()
         } else if notifications.unreadCount > 0 && Defaults[.notchNotificationsEnabled] && vm.notchState == .closed {

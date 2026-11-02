@@ -17,7 +17,7 @@ struct TabButton: View {
         Button(action: onClick) {
             Image(systemName: icon)
                 // Tighter spacing when many tabs are enabled so they don't run under the notch.
-                .padding(.horizontal, tabs.count > 4 ? 8 : 15)
+                .padding(.horizontal, tabs.count > 6 ? 6 : (tabs.count > 4 ? 8 : 15))
                 .contentShape(Capsule())
         }
         .buttonStyle(PlainButtonStyle())

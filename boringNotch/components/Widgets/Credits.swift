@@ -66,7 +66,7 @@ enum Credits {
     /// Features added in this modified version.
     static let forkFeatures: [String] = [
         "Weather", "Clipboard & screenshot history", "Break & water reminders",
-        "Notifications in the notch", "Notes with Calendar & Reminders", "File converter",
+        "Notifications in the notch", "Notes with Calendar & Reminders", "Daily & extra tasks", "File converter",
         "Download progress", "Animated charging", "Rainbow visualizer", "Cache cleaner",
     ]
 }

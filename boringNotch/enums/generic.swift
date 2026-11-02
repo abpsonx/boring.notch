@@ -32,6 +32,7 @@ public enum NotchViews {
     case notifications
     case notes
     case cleaner
+    case tasks
 }
 
 enum SettingsEnum {

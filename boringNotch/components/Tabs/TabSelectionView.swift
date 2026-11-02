@@ -27,6 +27,9 @@ var tabs: [TabModel] {
     if Defaults[.notchNotificationsEnabled] {
         result.append(TabModel(label: "Notifications", icon: "bell.fill", view: .notifications))
     }
+    if Defaults[.tasksEnabled] {
+        result.append(TabModel(label: "Tasks", icon: "checklist", view: .tasks))
+    }
     if Defaults[.quickNotesEnabled] {
         result.append(TabModel(label: "Notes", icon: "note.text", view: .notes))
     }

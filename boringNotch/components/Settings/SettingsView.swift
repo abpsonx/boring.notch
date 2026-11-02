@@ -54,6 +54,9 @@ struct SettingsView: View {
                 NavigationLink(value: "Notifications") {
                     Label("Notifications", systemImage: "bell.badge")
                 }
+                NavigationLink(value: "Tasks") {
+                    Label("Tasks", systemImage: "checklist")
+                }
                 NavigationLink(value: "Notes") {
                     Label("Notes", systemImage: "note.text")
                 }
@@ -105,6 +108,8 @@ struct SettingsView: View {
                     Shelf()
                 case "Notifications":
                     NotchNotificationSettings()
+                case "Tasks":
+                    TasksSettings()
                 case "Notes":
                     NotesSettings()
                 case "Weather":
