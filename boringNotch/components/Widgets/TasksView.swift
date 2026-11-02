@@ -64,7 +64,7 @@ private struct ReminderStrip: View {
 private struct RoutineColumn: View {
     @ObservedObject var manager: TasksManager
     @State private var input = ""
-    @State private var workdaysOnly = false
+    @State private var weekdays: Set<Int> = Set(1...7)
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -91,11 +91,17 @@ private struct RoutineColumn: View {
                             manager.toggleRoutine(routine.id)
                         }
                         .contextMenu {
-                            Button(routine.weekdays.count == 7 ? "Ubah ke hari kerja saja" : "Ubah ke setiap hari") {
-                                var updated = routine
-                                updated.weekdays = routine.weekdays.count == 7 ? Set(2...6) : Set(1...7)
-                                manager.updateRoutine(updated)
+                            Menu("Jadwal: \(routine.scheduleText)") {
+                                ScheduleMenuItems(weekdays: Binding(
+                                    get: { routine.weekdays },
+                                    set: { newValue in
+                                        var updated = routine
+                                        updated.weekdays = newValue
+                                        manager.updateRoutine(updated)
+                                    }
+                                ))
                             }
+                            Divider()
                             Button("Hapus rutin", role: .destructive) { manager.deleteRoutine(routine.id) }
                         }
                     }
@@ -104,20 +110,23 @@ private struct RoutineColumn: View {
 
             HStack(spacing: 4) {
                 QuickAddField(placeholder: "09:00 Job rutin…", text: $input, focused: $focused) {
-                    if manager.addRoutine(from: input, workdaysOnly: workdaysOnly) { input = "" }
+                    if manager.addRoutine(from: input, weekdays: weekdays) { input = "" }
                 }
-                Button {
-                    workdaysOnly.toggle()
+                Menu {
+                    ScheduleMenuItems(weekdays: $weekdays)
                 } label: {
-                    Text(workdaysOnly ? "Sen–Jum" : "Tiap hari")
+                    Text(RoutineTask.scheduleText(for: weekdays))
                         .font(.system(size: 9, weight: .semibold))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                        .lineLimit(1)
                 }
-                .buttonStyle(.plain)
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.visible)
+                .fixedSize()
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.white.opacity(0.1)))
                 .foregroundStyle(.white.opacity(0.8))
-                .help("Ulangi setiap hari atau hanya hari kerja")
+                .help("Hari job ini muncul")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -185,6 +194,30 @@ private struct ExtraColumn: View {
 }
 
 // MARK: - Pieces
+
+/// Presets plus a toggle per day (Mon-first), for choosing when a routine repeats.
+private struct ScheduleMenuItems: View {
+    @Binding var weekdays: Set<Int>
+
+    var body: some View {
+        Button("Setiap hari") { weekdays = Set(1...7) }
+        Button("Senin – Jumat") { weekdays = Set(2...6) }
+        Button("Senin – Sabtu") { weekdays = Set(2...7) }
+        Divider()
+        ForEach([2, 3, 4, 5, 6, 7, 1], id: \.self) { day in
+            Toggle(Self.fullNames[day - 1], isOn: Binding(
+                get: { weekdays.contains(day) },
+                set: { isOn in
+                    var updated = weekdays
+                    if isOn { updated.insert(day) } else { updated.remove(day) }
+                    if !updated.isEmpty { weekdays = updated }   // keep at least one day
+                }
+            ))
+        }
+    }
+
+    private static let fullNames = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"]
+}
 
 private struct ColumnHeader: View {
     let icon: String

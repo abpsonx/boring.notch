@@ -32,11 +32,17 @@ struct RoutineTask: Codable, Identifiable, Equatable {
 
     var timeText: String? { minuteOfDay.map(TasksManager.format(minuteOfDay:)) }
 
-    var scheduleText: String {
-        if weekdays.count == 7 { return "Setiap hari" }
-        if weekdays == Set(2...6) { return "Hari kerja" }
-        let names = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"]
-        return weekdays.sorted().map { names[$0 - 1] }.joined(separator: ", ")
+    var scheduleText: String { Self.scheduleText(for: weekdays) }
+
+    static let dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"]   // weekday 1…7
+
+    static func scheduleText(for weekdays: Set<Int>) -> String {
+        if weekdays.count == 7 { return "Tiap hari" }
+        if weekdays == Set(2...6) { return "Sen–Jum" }
+        if weekdays == Set(2...7) { return "Sen–Sab" }
+        // Mon-first order
+        let order = [2, 3, 4, 5, 6, 7, 1]
+        return order.filter { weekdays.contains($0) }.map { dayNames[$0 - 1] }.joined(separator: ", ")
     }
 }
 
@@ -140,10 +146,10 @@ final class TasksManager: ObservableObject {
 
     /// "09:00 Cek email" → routine at 09:00. Returns false if the title is empty.
     @discardableResult
-    func addRoutine(from input: String, workdaysOnly: Bool) -> Bool {
+    func addRoutine(from input: String, weekdays: Set<Int>) -> Bool {
         let (minute, title) = Self.parse(input)
-        guard !title.isEmpty else { return false }
-        routines.append(RoutineTask(title: title, minuteOfDay: minute, weekdays: workdaysOnly ? Set(2...6) : Set(1...7)))
+        guard !title.isEmpty, !weekdays.isEmpty else { return false }
+        routines.append(RoutineTask(title: title, minuteOfDay: minute, weekdays: weekdays))
         scheduleSave()
         return true
     }
