@@ -145,33 +145,36 @@ final class QuickNotesManager: ObservableObject {
         }
     }
 
-    /// Adds each task (or the whole note if it has no task lines) to Reminders.
+    struct ReminderItem {
+        let title: String
+        let due: Date?
+    }
+
+    /// Adds each item to Reminders with its own due time (and an alert at that time).
     @discardableResult
-    func addToReminders(_ note: QuickNote, due: Date?, withAlarm: Bool) async throws -> Int {
+    func addReminders(_ items: [ReminderItem], from note: QuickNote) async throws -> Int {
+        guard !items.isEmpty else { throw ExportError.nothingToAdd }
         guard try await requestAccess(.reminder) else { throw ExportError.noAccess("Reminders") }
         guard let list = store.defaultCalendarForNewReminders() else { throw ExportError.noDefaultCalendar("Reminders") }
 
-        let titles = note.tasks.isEmpty ? [note.displayTitle] : note.tasks
-        guard !titles.isEmpty else { throw ExportError.nothingToAdd }
-
-        for title in titles {
+        for item in items {
             let reminder = EKReminder(eventStore: store)
             reminder.calendar = list
-            reminder.title = title
+            reminder.title = item.title
             reminder.notes = note.tasks.isEmpty ? note.body : "From note: \(note.displayTitle)"
-            if let due {
+            if let due = item.due {
                 reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
-                if withAlarm { reminder.addAlarm(EKAlarm(absoluteDate: due)) }
+                reminder.addAlarm(EKAlarm(absoluteDate: due))
             }
             try store.save(reminder, commit: false)
         }
         try store.commit()
 
         if let index = notes.firstIndex(where: { $0.id == note.id }) {
-            notes[index].remindersAdded += titles.count
+            notes[index].remindersAdded += items.count
             scheduleSave()
         }
-        return titles.count
+        return items.count
     }
 
     private func requestAccess(_ type: EKEntityType) async throws -> Bool {

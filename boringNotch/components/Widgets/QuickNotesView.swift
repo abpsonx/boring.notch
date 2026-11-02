@@ -125,9 +125,15 @@ private struct NoteEditor: View {
     @State private var eventStart = QuickNoteDefaults.nextHour()
     @State private var eventMinutes = Defaults[.quickNotesEventMinutes]
     @State private var alertMinutes = Defaults[.quickNotesAlertMinutes]
-    // Reminders form
-    @State private var reminderDue = QuickNoteDefaults.endOfWorkday()
-    @State private var reminderHasDue = true
+    // Reminders form: one row per task
+    struct ReminderRow: Identifiable {
+        let id = UUID()
+        var title: String
+        var included = true
+        var hasDue = true
+        var due: Date
+    }
+    @State private var reminderRows: [ReminderRow] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -145,6 +151,7 @@ private struct NoteEditor: View {
                 }
                 toolbarButton("checklist", help: "Add tasks to Reminders", active: mode == .reminders) {
                     mode = mode == .reminders ? .edit : .reminders
+                    if mode == .reminders { prepareReminderRows() }
                     status = nil
                 }
                 toolbarButton("trash", help: "Delete note", active: false) {
@@ -251,26 +258,59 @@ private struct NoteEditor: View {
     // MARK: Reminders
 
     private var remindersForm: some View {
-        let tasks = currentTasks
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(tasks.isEmpty
-                 ? "No \"-\" task lines found: the note will be added as one reminder."
-                 : "\(tasks.count) task(s): " + tasks.prefix(3).joined(separator: " · ") + (tasks.count > 3 ? " …" : ""))
-                .lineLimit(2)
-                .foregroundStyle(.gray)
-            HStack(spacing: 8) {
-                Toggle("Due", isOn: $reminderHasDue)
-                    .toggleStyle(.checkbox)
-                DatePicker("", selection: $reminderDue, displayedComponents: [.date, .hourAndMinute])
-                    .datePickerStyle(.stepperField)
-                    .labelsHidden()
-                    .disabled(!reminderHasDue)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Text(currentTasks.isEmpty
+                     ? "No \"-\" task lines: the note becomes one reminder"
+                     : "Pick a time for each task")
+                    .foregroundStyle(.gray)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Button("Same time for all") {
+                    if let first = reminderRows.first?.due {
+                        for index in reminderRows.indices { reminderRows[index].due = first }
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.8))
+                .disabled(reminderRows.count < 2)
             }
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 3) {
+                    ForEach($reminderRows) { $row in
+                        HStack(spacing: 6) {
+                            Toggle("", isOn: $row.included)
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+                            Text(row.title)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .foregroundStyle(row.included ? Color.white : Color.gray)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Toggle("", isOn: $row.hasDue)
+                                .toggleStyle(.checkbox)
+                                .labelsHidden()
+                                .help("Set a due time")
+                                .disabled(!row.included)
+                            DatePicker("", selection: $row.due, displayedComponents: [.date, .hourAndMinute])
+                                .datePickerStyle(.stepperField)
+                                .labelsHidden()
+                                .disabled(!row.included || !row.hasDue)
+                                .opacity(row.hasDue ? 1 : 0.4)
+                        }
+                    }
+                }
+            }
+
             formFooter(actionTitle: "Add to Reminders") {
                 var snapshot = note
                 snapshot.title = title
                 snapshot.body = text
-                let count = try await manager.addToReminders(snapshot, due: reminderHasDue ? reminderDue : nil, withAlarm: reminderHasDue)
+                let items = reminderRows
+                    .filter(\.included)
+                    .map { QuickNotesManager.ReminderItem(title: $0.title, due: $0.hasDue ? $0.due : nil) }
+                let count = try await manager.addReminders(items, from: snapshot)
                 return "Added \(count) reminder\(count == 1 ? "" : "s")"
             }
         }
@@ -280,6 +320,13 @@ private struct NoteEditor: View {
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+    }
+
+    /// One row per task line (or the whole note), each with its own due time.
+    private func prepareReminderRows() {
+        let titles = currentTasks.isEmpty ? [title.isEmpty ? note.displayTitle : title] : currentTasks
+        let defaultDue = QuickNoteDefaults.endOfWorkday()
+        reminderRows = titles.map { ReminderRow(title: $0, due: defaultDue) }
     }
 
     private var currentTasks: [String] {
