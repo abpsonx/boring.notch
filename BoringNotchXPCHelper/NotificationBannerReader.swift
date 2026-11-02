@@ -62,6 +62,49 @@ enum NotificationBannerReader {
         return false
     }
 
+    /// Closes the macOS banner (so the notification only shows in the notch).
+    static func dismissBanner(withKey key: String) -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+        for element in bannerElements() where payload(for: element).key == key {
+            // 1. A "Close"/"Tutup"/"Clear" custom action on the banner.
+            for (target, action) in customActions(in: element) where isCloseAction(action) {
+                if AXUIElementPerformAction(target, action as CFString) == .success { return true }
+            }
+            // 2. A close button inside the banner.
+            if let button = closeButton(in: element, depth: 0),
+               AXUIElementPerformAction(button, kAXPressAction as CFString) == .success {
+                return true
+            }
+            // 3. Standard cancel action.
+            if AXUIElementPerformAction(element, kAXCancelAction as CFString) == .success { return true }
+        }
+        return false
+    }
+
+    private static let closeKeywords = ["close", "tutup", "clear", "bersihkan", "hapus", "dismiss", "schließen", "fermer", "cerrar", "chiudi"]
+
+    private static func isCloseAction(_ action: String) -> Bool {
+        let name = displayName(of: action).lowercased()
+        return closeKeywords.contains { name.contains($0) }
+    }
+
+    private static func closeButton(in element: AXUIElement, depth: Int) -> AXUIElement? {
+        guard depth <= 6 else { return nil }
+        for child in children(of: element) {
+            let role: String? = attribute(child, kAXRoleAttribute)
+            if role == kAXButtonRole as String {
+                let label = [
+                    attribute(child, kAXDescriptionAttribute) as String?,
+                    attribute(child, kAXTitleAttribute) as String?,
+                    attribute(child, kAXIdentifierAttribute) as String?,
+                ].compactMap { $0?.lowercased() }.joined(separator: " ")
+                if closeKeywords.contains(where: { label.contains($0) }) { return child }
+            }
+            if let found = closeButton(in: child, depth: depth + 1) { return found }
+        }
+        return nil
+    }
+
     /// Text dump of the NotificationCenter accessibility tree, for troubleshooting.
     static func debugDump() -> String {
         guard AXIsProcessTrusted() else { return "Accessibility permission not granted to the helper." }
