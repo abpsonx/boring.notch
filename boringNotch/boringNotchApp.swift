@@ -36,6 +36,12 @@ struct DynamicNotchApp: App {
                 }
             }
             .keyboardShortcut(KeyEquivalent(","), modifiers: .command)
+            Button("Calendar (Month View)") {
+                DispatchQueue.main.async {
+                    MonthCalendarWindowController.shared.show()
+                }
+            }
+            .keyboardShortcut(KeyEquivalent("k"), modifiers: .command)
             CheckForUpdatesView(updater: updaterController.updater)
             Divider()
             Button("Restart Boring Notch") {
@@ -288,6 +294,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NotchNotificationManager.shared.start()
         DownloadMonitor.shared.start()
         TasksManager.shared.start()
+        GoogleTasksManager.shared.start()
 
         NotificationCenter.default.addObserver(
             self,

@@ -27,6 +27,7 @@ struct TasksView: View {
         .onAppear {
             NotchKeyboard.begin()
             manager.hideBanner()
+            Task { await GoogleTasksManager.shared.refresh() }
         }
         .onDisappear {
             NotchKeyboard.end()
@@ -136,7 +137,9 @@ private struct RoutineColumn: View {
 
 private struct ExtraColumn: View {
     @ObservedObject var manager: TasksManager
+    @ObservedObject var google = GoogleTasksManager.shared
     @State private var input = ""
+    @State private var addToGoogle = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -156,7 +159,7 @@ private struct ExtraColumn: View {
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 2) {
-                    if extras.isEmpty {
+                    if extras.isEmpty && !(google.isConnected && !google.visibleTasks.isEmpty) {
                         EmptyHint(text: "Job yang kadang ada.\nContoh: 14:00 Kirim invoice")
                     }
                     ForEach(extras) { task in
@@ -174,15 +177,78 @@ private struct ExtraColumn: View {
                             Button("Hapus", role: .destructive) { manager.deleteExtra(task.id) }
                         }
                     }
+
+                    if google.isConnected && !google.visibleTasks.isEmpty {
+                        HStack(spacing: 4) {
+                            Text("G")
+                                .font(.system(size: 8, weight: .heavy))
+                                .frame(width: 12, height: 12)
+                                .background(Circle().fill(Color.white.opacity(0.85)))
+                                .foregroundStyle(Color.black)
+                            Text("Google Tasks")
+                            Spacer()
+                        }
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.gray)
+                        .padding(.top, 4)
+
+                        ForEach(google.visibleTasks) { task in
+                            TaskRow(
+                                title: task.title,
+                                time: task.due.map { googleDueText($0) },
+                                subtitle: google.lists.count > 1 ? task.listTitle : nil,
+                                isDone: task.isCompleted,
+                                isOverdue: !task.isCompleted && (task.due.map { $0 < Calendar.current.startOfDay(for: Date()) } ?? false),
+                                highlighted: false
+                            ) {
+                                google.toggle(task)
+                            }
+                            .help(task.notes ?? task.title)
+                        }
+                    }
                 }
             }
 
-            QuickAddField(placeholder: "14:00 Job tambahan… (jam opsional)", text: $input, focused: $focused) {
-                if manager.addExtra(from: input) { input = "" }
+            HStack(spacing: 4) {
+                QuickAddField(placeholder: addToGoogle ? "Tambah ke Google Tasks…" : "14:00 Job tambahan… (jam opsional)", text: $input, focused: $focused) {
+                    submit()
+                }
+                if google.isConnected {
+                    Button {
+                        addToGoogle.toggle()
+                    } label: {
+                        Text("G")
+                            .font(.system(size: 9, weight: .heavy))
+                            .frame(width: 20, height: 20)
+                            .background(Circle().fill(addToGoogle ? Color.white.opacity(0.9) : Color.white.opacity(0.1)))
+                            .foregroundStyle(addToGoogle ? Color.black : Color.white.opacity(0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .help(addToGoogle ? "Job baru masuk ke Google Tasks" : "Job baru disimpan di Mac ini")
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .keepNotchOpenWhileTyping(focused)
+    }
+
+    private func submit() {
+        guard addToGoogle && google.isConnected else {
+            if manager.addExtra(from: input) { input = "" }
+            return
+        }
+        let (minute, title) = TasksManager.parse(input)
+        guard !title.isEmpty else { return }
+        let due: Date? = minute != nil ? Date() : nil
+        input = ""
+        Task { _ = await google.add(title: title, due: due) }
+    }
+
+    private func googleDueText(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) { return "Hari ini" }
+        if Calendar.current.isDateInTomorrow(date) { return "Besok" }
+        if Calendar.current.isDateInYesterday(date) { return "Kemarin" }
+        return date.formatted(.dateTime.day().month(.abbreviated))
     }
 
     private func dueText(_ date: Date) -> String {
@@ -422,6 +488,8 @@ struct TasksSettings: View {
                 Text("In the notch, type \"09:00 Cek email\" to add a job with a time, or just \"Cek email\" without one.")
             }
 
+            GoogleTasksSettingsSection()
+
             Section {
                 if manager.routines.isEmpty {
                     Text("No routine jobs yet.")
@@ -512,5 +580,67 @@ private struct RoutineEditorRow: View {
         updated.minuteOfDay = hasTime ? TasksManager.minuteOfDay(time) : nil
         guard updated != routine else { return }
         manager.updateRoutine(updated)
+    }
+}
+
+// MARK: - Google Tasks settings
+
+private struct GoogleTasksSettingsSection: View {
+    @ObservedObject var google = GoogleTasksManager.shared
+    @Default(.googleClientID) var clientID
+    @Default(.googleClientSecret) var clientSecret
+    @Default(.googleTaskListIDs) var listIDs
+    @Default(.googleAccountEmail) var email
+
+    var body: some View {
+        Section {
+            if google.isConnected {
+                HStack {
+                    Label(email.isEmpty ? "Connected" : "Connected as \(email)", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Spacer()
+                    Button("Sync now") { Task { await google.refresh() } }
+                    Button("Disconnect", role: .destructive) { google.disconnect() }
+                }
+                if let lastSync = google.lastSync {
+                    Text("Last synced \(lastSync.formatted(date: .omitted, time: .shortened)) · \(google.tasks.filter { !$0.isCompleted }.count) open tasks")
+                        .foregroundStyle(.secondary)
+                }
+                if !google.lists.isEmpty {
+                    ForEach(google.lists) { list in
+                        Toggle(list.title, isOn: Binding(
+                            get: { listIDs.isEmpty || listIDs.contains(list.id) },
+                            set: { isOn in
+                                var current = listIDs.isEmpty ? google.lists.map(\.id) : listIDs
+                                if isOn { if !current.contains(list.id) { current.append(list.id) } } else { current.removeAll { $0 == list.id } }
+                                listIDs = current.count == google.lists.count ? [] : current
+                                Task { await google.refresh() }
+                            }
+                        ))
+                    }
+                }
+            } else {
+                TextField("Client ID", text: $clientID, prompt: Text("xxxx.apps.googleusercontent.com"))
+                SecureField("Client Secret", text: $clientSecret)
+                HStack {
+                    Button(google.isBusy ? "Waiting for browser…" : "Connect Google Tasks") { google.connect() }
+                        .disabled(google.isBusy || clientID.isEmpty || clientSecret.isEmpty)
+                    Spacer()
+                    Link("Open Google Cloud Console", destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                }
+            }
+            if let error = google.lastError {
+                Text(error)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("Google Tasks")
+        } footer: {
+            if !google.isConnected {
+                Text("""
+                One-time setup (free): in Google Cloud Console create a project → APIs & Services → enable "Google Tasks API" → OAuth consent screen (External, add your Gmail as a test user) → Credentials → Create OAuth client ID → type "Desktop app". Paste the Client ID and Secret here and click Connect; sign in with Google in your browser.
+                """)
+            }
+        }
     }
 }

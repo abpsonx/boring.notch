@@ -195,7 +195,16 @@ struct CalendarView: View {
                         .font(.title3)
                         .fontWeight(.light)
                         .foregroundColor(Color(white: 0.65))
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color(white: 0.5))
                 }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    // Big month view in its own window.
+                    MonthCalendarWindowController.shared.show()
+                }
+                .help("Open month view")
 
                 ZStack(alignment: .top) {
                     WheelPicker(selectedDate: $selectedDate, config: Config())
