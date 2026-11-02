@@ -42,8 +42,6 @@ extension Defaults.Keys {
     static let notchNotificationDuration = Key<Double>("notchNotificationDuration", default: 6)
     static let notchNotificationShowPreview = Key<Bool>("notchNotificationShowPreview", default: true)
     static let notchNotificationMissedIndicator = Key<Bool>("notchNotificationMissedIndicator", default: true)
-    /// Close the macOS banner right after reading it, so notifications only show in the notch.
-    static let notchNotificationHideSystemBanner = Key<Bool>("notchNotificationHideSystemBanner", default: false)
 }
 
 @MainActor
@@ -120,8 +118,7 @@ final class NotchNotificationManager: ObservableObject {
                 if tick % 6 == 0 { await self?.refreshAuthorization() }
                 tick += 1
                 await self?.poll()
-                // Poll faster when hiding macOS banners so they disappear quickly.
-                try? await Task.sleep(for: .milliseconds(Defaults[.notchNotificationHideSystemBanner] ? 300 : 800))
+                try? await Task.sleep(for: .milliseconds(800))
             }
         }
     }
@@ -147,17 +144,7 @@ final class NotchNotificationManager: ObservableObject {
                 $0.appName == notification.appName && $0.title == notification.title && $0.body == notification.body
                     && Date().timeIntervalSince($0.date) < 60
             }
-            if Defaults[.notchNotificationHideSystemBanner] {
-                // Show it only in the notch: close the macOS banner.
-                let key = payload.key
-                Task { _ = await XPCHelperClient.shared.dismissNotificationBanner(key: key) }
-            }
-            if !isDuplicate {
-                var shown = notification
-                // The macOS banner (needed for inline reply) is gone when hiding banners.
-                if Defaults[.notchNotificationHideSystemBanner] { shown.canReply = false }
-                enqueue(shown)
-            }
+            if !isDuplicate { enqueue(notification) }
         }
     }
 
@@ -567,14 +554,6 @@ struct NotchNotificationSettings: View {
                 }
                 Defaults.Toggle(key: .notchNotificationMissedIndicator) {
                     Text("Show unread count on the closed notch")
-                }
-                Defaults.Toggle(key: .notchNotificationHideSystemBanner) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Show notifications only in the notch")
-                        Text("Closes the macOS banner right after it appears (it may flash briefly). Inline Reply isn't available then; clicking opens the app.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
                 }
                 Slider(value: $duration, in: 3...12, step: 1) {
                     Text("Show for \(Int(duration)) seconds")
