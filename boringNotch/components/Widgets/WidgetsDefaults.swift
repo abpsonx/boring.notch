@@ -43,7 +43,10 @@ extension Defaults.Keys {
     static let idleResetMinutes = Key<Int>("idleResetMinutes", default: 5)
     static let waterReminderEnabled = Key<Bool>("waterReminderEnabled", default: true)
     static let waterIntervalMinutes = Key<Int>("waterIntervalMinutes", default: 60)
-    static let waterDailyGoal = Key<Int>("waterDailyGoal", default: 8)
+    static let waterDailyGoal = Key<Int>("waterDailyGoal", default: 8)   // legacy (glasses)
+    /// Daily target and glass size in millilitres.
+    static let waterGoalML = Key<Int>("waterGoalML", default: 2000)
+    static let waterGlassML = Key<Int>("waterGlassML", default: 250)
     static let waterCount = Key<Int>("waterCount", default: 0)
     static let waterCountDay = Key<String>("waterCountDay", default: "")
     static let wellnessReminderSound = Key<Bool>("wellnessReminderSound", default: true)

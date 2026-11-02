@@ -109,6 +109,23 @@ final class WellnessManager: ObservableObject {
 
     var timeUntilBreak: TimeInterval { max(0, breakInterval - continuousScreenTime) }
 
+    // MARK: Water amounts (waterCount = glasses logged today)
+
+    var waterML: Int { waterCount * max(50, Defaults[.waterGlassML]) }
+    var waterGoalML: Int { max(250, Defaults[.waterGoalML]) }
+    var waterProgress: Double { min(1, Double(waterML) / Double(waterGoalML)) }
+
+    /// "750 ml", "1,5 L", "2 L"
+    static func formatML(_ ml: Int) -> String {
+        if ml < 1000 { return "\(ml) ml" }
+        let liters = Double(ml) / 1000
+        let formatter = NumberFormatter()
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        formatter.locale = Locale(identifier: "id_ID")
+        return "\(formatter.string(from: NSNumber(value: liters)) ?? String(liters)) L"
+    }
+
     var timeUntilWater: TimeInterval {
         let interval = TimeInterval(max(1, Defaults[.waterIntervalMinutes]) * 60)
         return max(0, interval - now.timeIntervalSince(lastWaterReference))
@@ -218,7 +235,7 @@ final class WellnessManager: ObservableObject {
         }
 
         if Defaults[.waterReminderEnabled],
-           Defaults[.waterCount] < Defaults[.waterDailyGoal],
+           waterML < waterGoalML,
            timeUntilWater <= 0
         {
             showWaterReminder()
@@ -234,8 +251,7 @@ final class WellnessManager: ObservableObject {
 
     private func showWaterReminder() {
         lastWaterReference = Date()
-        let goal = Defaults[.waterDailyGoal]
-        show(WellnessReminder(kind: .drinkWater, title: "Waktunya minum air", detail: "\(Defaults[.waterCount])/\(goal)"))
+        show(WellnessReminder(kind: .drinkWater, title: "Waktunya minum air", detail: "\(Self.formatML(waterML))/\(Self.formatML(waterGoalML))"))
     }
 
     private func show(_ reminder: WellnessReminder) {

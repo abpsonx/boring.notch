@@ -154,7 +154,8 @@ struct WellnessSettings: View {
     @Default(.breakRepeatMinutes) var breakRepeat
     @Default(.idleResetMinutes) var idleReset
     @Default(.waterIntervalMinutes) var waterInterval
-    @Default(.waterDailyGoal) var waterGoal
+    @Default(.waterGoalML) var waterGoalML
+    @Default(.waterGlassML) var waterGlassML
     @Default(.breakReminderEnabled) var breakEnabled
     @Default(.waterReminderEnabled) var waterEnabled
 
@@ -191,9 +192,17 @@ struct WellnessSettings: View {
                     Stepper(value: $waterInterval, in: 15...180, step: 15) {
                         Text("Every \(waterInterval) min")
                     }
-                    Stepper(value: $waterGoal, in: 1...12) {
-                        Text("Daily goal: \(waterGoal) glasses")
+                    Stepper(value: $waterGoalML, in: 500...5000, step: 250) {
+                        Text("Daily target: \(WellnessManager.formatML(waterGoalML))")
                     }
+                    Picker("Glass size", selection: $waterGlassML) {
+                        ForEach([100, 150, 200, 250, 300, 350, 400, 500, 600, 750, 1000], id: \.self) {
+                            Text(WellnessManager.formatML($0)).tag($0)
+                        }
+                    }
+                    Text("≈ \(Int((Double(waterGoalML) / Double(max(50, waterGlassML))).rounded(.up))) glasses a day")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 .disabled(!waterEnabled)
                 Button("Preview water reminder") { WellnessManager.shared.preview(.drinkWater) }

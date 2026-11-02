@@ -130,7 +130,8 @@ struct WellnessCard: View {
     @ObservedObject var wellness = WellnessManager.shared
     @Default(.breakReminderEnabled) var breakEnabled
     @Default(.waterReminderEnabled) var waterEnabled
-    @Default(.waterDailyGoal) var waterGoal
+    @Default(.waterGoalML) var waterGoalML
+    @Default(.waterGlassML) var waterGlassML
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -223,7 +224,7 @@ struct WellnessCard: View {
                     .minimumScaleFactor(0.8)
                 Text(reminder.kind == .takeBreak
                      ? "Sudah \(reminder.detail) di depan layar"
-                     : "Hari ini \(reminder.detail) gelas")
+                     : "Hari ini \(reminder.detail)")
                     .font(.caption)
                     .foregroundStyle(.gray)
                     .lineLimit(1)
@@ -242,20 +243,33 @@ struct WellnessCard: View {
     }
 
     private var waterRow: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 2) {
-                ForEach(0..<max(1, min(waterGoal, 12)), id: \.self) { index in
-                    Image(systemName: index < wellness.waterCount ? "drop.fill" : "drop")
-                        .font(.system(size: 12))
-                        .foregroundStyle(index < wellness.waterCount ? Color.cyan : Color.gray.opacity(0.5))
+        HStack(spacing: 8) {
+            BodyWaterFigure(progress: wellness.waterProgress)
+                .frame(width: 26, height: 40)
+                .help("\(Int((wellness.waterProgress * 100).rounded()))% dari target harian")
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(WellnessManager.formatML(wellness.waterML))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .contentTransition(.numericText())
+                    Text("/ \(WellnessManager.formatML(wellness.waterGoalML))")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.gray)
                 }
+                Text(wellness.waterProgress >= 1
+                     ? "Target tercapai 🎉"
+                     : "\(Int((wellness.waterProgress * 100).rounded()))% · kurang \(WellnessManager.formatML(max(0, wellness.waterGoalML - wellness.waterML)))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(wellness.waterProgress >= 1 ? Color.green : Color.gray)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             }
-            Text("\(wellness.waterCount)/\(waterGoal)")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.gray)
+            .layoutPriority(-1)
             Spacer(minLength: 0)
             Button {
-                wellness.undoWater()
+                withAnimation(.easeInOut(duration: 0.9)) { wellness.undoWater() }
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 10, weight: .bold))
@@ -265,7 +279,10 @@ struct WellnessCard: View {
             .buttonStyle(.plain)
             .foregroundStyle(.gray)
             .disabled(wellness.waterCount == 0)
-            pillButton("Minum", icon: "plus", prominent: true) { wellness.logWater() }
+            pillButton("\(waterGlassML) ml", icon: "plus", prominent: true) {
+                withAnimation(.easeInOut(duration: 1.2)) { wellness.logWater() }
+            }
+            .help("Catat satu gelas (\(waterGlassML) ml)")
         }
     }
 
@@ -325,5 +342,66 @@ struct WellnessReminderLiveActivity: View {
 
     private var accent: Color {
         reminder.kind == .drinkWater ? .cyan : .orange
+    }
+}
+
+// MARK: - Body water figure
+
+/// A human silhouette that fills with water from the feet up, with a moving wave.
+struct BodyWaterFigure: View {
+    var progress: Double
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
+            let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2) / 2
+            ZStack {
+                // Empty body
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                // Water, two waves for depth
+                WaterWave(level: progress, phase: phase + 0.35, amplitude: 1.6)
+                    .fill(Color.cyan.opacity(0.45))
+                WaterWave(level: progress, phase: phase, amplitude: 2)
+                    .fill(LinearGradient(colors: [Color.cyan, Color.blue], startPoint: .top, endPoint: .bottom))
+            }
+            .mask {
+                Image(systemName: "figure.stand")
+                    .resizable()
+                    .scaledToFit()
+            }
+        }
+        .animation(.easeInOut(duration: 1.2), value: progress)
+        .shadow(color: Color.cyan.opacity(progress > 0 ? 0.35 : 0), radius: 4)
+    }
+}
+
+/// Filled area below a sine wave whose height is `level` (0…1) of the rect.
+struct WaterWave: Shape {
+    var level: Double
+    var phase: Double
+    var amplitude: CGFloat
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(level, phase) }
+        set { level = newValue.first; phase = newValue.second }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let clamped = min(1, max(0, level))
+        guard clamped > 0 else { return path }
+        // Keep the wave visible when full by letting it overshoot the top a little.
+        let baseY = rect.maxY - rect.height * clamped - (clamped >= 1 ? amplitude * 2 : 0)
+        let wavelength = rect.width * 1.2
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        var x = rect.minX
+        while x <= rect.maxX {
+            let angle = (Double(x / wavelength) + phase) * 2 * .pi
+            path.addLine(to: CGPoint(x: x, y: baseY + amplitude * CGFloat(sin(angle))))
+            x += 1
+        }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
