@@ -901,6 +901,8 @@ struct About: View {
 
                 UpdaterSettingsView(updater: updaterController.updater)
 
+                CreditsSections()
+
                 HStack(spacing: 30) {
                     Spacer(minLength: 0)
                     Button {
@@ -923,7 +925,7 @@ struct About: View {
             }
             VStack(spacing: 0) {
                 Divider()
-                Text("Made with 🫶🏻 by not so boring not.people")
+                Text("Made with 🫶🏻 by not so boring not.people · Modified by \(Credits.modifiedBy)")
                     .foregroundStyle(.secondary)
                     .padding(.top, 5)
                     .padding(.bottom, 7)
