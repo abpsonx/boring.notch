@@ -450,6 +450,8 @@ struct ContentView: View {
                         NotificationsTabView()
                     case .notes:
                         QuickNotesView()
+                    case .cleaner:
+                        NotchCleanerView()
                     }
                 }
                 .overlay(alignment: .bottom) {

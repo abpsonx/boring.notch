@@ -61,6 +61,25 @@ struct BoringHeader: View {
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
+                        if Defaults[.showCleanerButton] {
+                            Button(action: {
+                                withAnimation(.smooth) {
+                                    coordinator.currentView = coordinator.currentView == .cleaner ? .home : .cleaner
+                                }
+                            }) {
+                                Capsule()
+                                    .fill(coordinator.currentView == .cleaner ? Color.white.opacity(0.2) : .black)
+                                    .frame(width: 30, height: 30)
+                                    .overlay {
+                                        Image(systemName: "sparkles")
+                                            .foregroundColor(.white)
+                                            .padding()
+                                            .imageScale(.medium)
+                                    }
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .help("Clean app caches")
+                        }
                         if Defaults[.settingsIconInNotch] {
                             Button(action: {
                                 DispatchQueue.main.async {

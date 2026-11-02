@@ -7,6 +7,7 @@
 //
 
 import AppKit
+import Defaults
 import SwiftUI
 
 /// Must match `CacheEntryPayload` / `CacheRemovalResult` in the XPC helper.
@@ -137,6 +138,9 @@ struct CacheCleanerSettings: View {
                 Toggle("Include Apple system caches (com.apple.*)", isOn: $model.includeApple)
                     .onChange(of: model.includeApple) { _, _ in model.scan() }
                 Toggle("Delete permanently instead of moving to the Trash", isOn: $model.permanently)
+                Defaults.Toggle(key: .showCleanerButton) {
+                    Text("Show cleaner button (🧹) in the notch")
+                }
                 if let message = model.message {
                     Text(message)
                         .foregroundStyle(.secondary)
@@ -205,6 +209,155 @@ struct CacheCleanerSettings: View {
         .onAppear { if model.entries.isEmpty { model.scan() } }
         .accentColor(.effectiveAccent)
         .navigationTitle("Cleaner")
+    }
+
+    private func format(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+}
+
+// MARK: - Notch panel
+
+extension Defaults.Keys {
+    static let showCleanerButton = Key<Bool>("showCleanerButton", default: true)
+}
+
+/// Compact cleaner shown inside the open notch (opened from the 🧹 header button).
+struct NotchCleanerView: View {
+    @StateObject private var model = CacheCleanerModel()
+    @ObservedObject var coordinator = BoringViewCoordinator.shared
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            // Summary + actions
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(.cyan)
+                    Text("Cleaner")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                    Spacer(minLength: 0)
+                    Button {
+                        coordinator.currentView = .home
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.gray)
+                    .help("Close")
+                }
+                Text(model.isScanning && model.entries.isEmpty ? "…" : format(model.totalBytes))
+                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                Text("Selected \(format(model.selectedBytes))")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.gray)
+                Toggle("Delete permanently", isOn: $model.permanently)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.gray)
+                HStack(spacing: 6) {
+                    Button {
+                        model.scan()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .bold))
+                            .frame(width: 24, height: 22)
+                            .background(Capsule().fill(Color.white.opacity(0.1)))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .disabled(model.isScanning || model.isCleaning)
+                    .help("Scan again")
+
+                    Button {
+                        model.clean()
+                    } label: {
+                        Text(model.isCleaning ? "Cleaning…" : "Clean")
+                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(model.selected.isEmpty ? Color.white.opacity(0.2) : Color.white.opacity(0.9)))
+                            .foregroundStyle(Color.black)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(model.selected.isEmpty || model.isCleaning || model.isScanning)
+                }
+            }
+            .frame(width: 150, alignment: .leading)
+
+            // List
+            VStack(alignment: .leading, spacing: 4) {
+                if let message = model.message {
+                    Text(message)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.green)
+                        .lineLimit(2)
+                }
+                if model.isScanning && model.entries.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    HStack {
+                        Text("\(model.entries.count) app caches")
+                        Spacer()
+                        Button("All") { model.selected = Set(model.entries.map(\.path)) }
+                        Button("None") { model.selected.removeAll() }
+                    }
+                    .font(.system(size: 10))
+                    .foregroundStyle(.gray)
+                    .buttonStyle(.plain)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: 2) {
+                            ForEach(model.entries) { entry in
+                                row(entry)
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(.top, 4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onAppear { if model.entries.isEmpty { model.scan() } }
+    }
+
+    private func row(_ entry: CacheEntry) -> some View {
+        let running = model.isRunning(entry)
+        let isOn = model.selected.contains(entry.path)
+        return HStack(spacing: 6) {
+            Image(systemName: isOn ? "checkmark.square.fill" : "square")
+                .font(.system(size: 11))
+                .foregroundStyle(isOn ? Color.cyan : Color.gray)
+            Image(nsImage: model.icon(for: entry))
+                .resizable()
+                .frame(width: 14, height: 14)
+            Text(model.displayName(for: entry))
+                .font(.system(size: 11))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            if running {
+                Text("Running")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.orange)
+            }
+            Spacer(minLength: 4)
+            Text(format(entry.bytes))
+                .font(.system(size: 10))
+                .monospacedDigit()
+                .foregroundStyle(.gray)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(isOn ? 0.08 : 0.03)))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isOn { model.selected.remove(entry.path) } else { model.selected.insert(entry.path) }
+        }
     }
 
     private func format(_ bytes: Int64) -> String {
