@@ -43,6 +43,8 @@ struct ContentView: View {
     @Default(.useMusicVisualizer) var useMusicVisualizer
 
     @Default(.showNotHumanFace) var showNotHumanFace
+    @Default(.idleAnimationEnabled) var idleAnimationEnabled
+    @Default(.idleAnimationFileName) var idleAnimationFileName
 
     // Shared interactive spring for movement/resizing to avoid conflicting animations
     private let animationSpring = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.8, blendDuration: 0)
@@ -63,6 +65,11 @@ struct ContentView: View {
                 ? cornerRadiusInsets.opened.bottom
                 : cornerRadiusInsets.closed.bottom
         )
+    }
+
+    /// Your own GIF/Lottie animation while nothing else is on the closed notch.
+    private var showIdleAnimation: Bool {
+        idleAnimationEnabled && !idleAnimationFileName.isEmpty && IdleAnimationStore.currentURL != nil
     }
 
     /// True on displays with a camera notch (the middle of the closed notch is hidden by hardware).
@@ -106,7 +113,7 @@ struct ContentView: View {
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
         } else if !coordinator.expandingView.show && vm.notchState == .closed
-            && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace]
+            && (!musicManager.isPlaying && musicManager.isPlayerIdle) && (Defaults[.showNotHumanFace] || showIdleAnimation)
             && !vm.hideOnClosed
         {
             chinWidth += (2 * max(0, vm.effectiveClosedNotchHeight - 12) + 20)
@@ -390,6 +397,15 @@ struct ContentView: View {
                               notchWidth: vm.closedNotchSize.width,
                               height: vm.effectiveClosedNotchHeight
                           )
+                          .transition(.opacity)
+                      } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && showIdleAnimation && !vm.hideOnClosed, let idleURL = IdleAnimationStore.currentURL {
+                          IdleAnimationActivity(
+                              url: idleURL,
+                              notchWidth: vm.closedNotchSize.width,
+                              height: vm.effectiveClosedNotchHeight,
+                              hasPhysicalNotch: hasPhysicalNotch
+                          )
+                          .id(idleAnimationFileName)
                           .transition(.opacity)
                       } else if !coordinator.expandingView.show && vm.notchState == .closed && (!musicManager.isPlaying && musicManager.isPlayerIdle) && Defaults[.showNotHumanFace] && !vm.hideOnClosed  {
                           BoringFaceAnimation()

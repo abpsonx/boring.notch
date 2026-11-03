@@ -1426,6 +1426,8 @@ struct Appearance: View {
                 }
             }
 
+            IdleAnimationSettingsSection()
+
             Section {
                 Defaults.Toggle(key: .showMirror) {
                     Text("Enable boring mirror")
