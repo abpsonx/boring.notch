@@ -193,6 +193,7 @@ struct IdleAnimationSettingsSection: View {
     @Default(.idleAnimationFileName) var fileName
     @Default(.idleAnimationMode) var mode
     @Default(.idleAnimationSpeed) var speed
+    @Default(.idleAnimationScale) var scale
 
     var body: some View {
         Section {
