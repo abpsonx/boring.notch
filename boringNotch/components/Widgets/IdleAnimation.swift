@@ -24,6 +24,8 @@ extension Defaults.Keys {
     static let idleAnimationFileName = Key<String>("idleAnimationFileName", default: "")
     static let idleAnimationMode = Key<IdleAnimationMode>("idleAnimationMode", default: .walk)
     static let idleAnimationSpeed = Key<Double>("idleAnimationSpeed", default: 1.0)
+    /// Animation height relative to the notch (1 = fits inside; bigger grows the notch downward).
+    static let idleAnimationScale = Key<Double>("idleAnimationScale", default: 2.0)
 }
 
 enum IdleAnimationStore {
@@ -129,8 +131,11 @@ struct IdleAnimationActivity: View {
     let hasPhysicalNotch: Bool
     @Default(.idleAnimationMode) var mode
     @Default(.idleAnimationSpeed) var speed
+    @Default(.idleAnimationScale) var scale
 
-    private var size: CGFloat { max(16, height - 4) }
+    private var size: CGFloat { max(16, (height - 4) * CGFloat(scale)) }
+    /// The closed notch grows downward when the animation is taller than the notch.
+    private var areaHeight: CGFloat { max(height, size + 6) }
     private var trackWidth: CGFloat { notchWidth + 2 * max(0, height - 12) + 20 }
 
     var body: some View {
@@ -141,14 +146,16 @@ struct IdleAnimationActivity: View {
                 standing
             }
         }
-        .frame(width: trackWidth, height: height)
+        .frame(width: trackWidth, height: areaHeight, alignment: .bottom)
+        .padding(.bottom, areaHeight > height ? 6 : 0)
         .clipped()
     }
 
     /// In the middle on Macs without a camera notch, beside it on Macs with one.
     private var standing: some View {
         HStack {
-            if hasPhysicalNotch {
+            if hasPhysicalNotch && size <= height {
+                // Small: next to the camera notch.
                 Spacer()
                 IdleAnimationPlayer(url: url, speed: speed)
                     .frame(width: size, height: size)
@@ -174,7 +181,7 @@ struct IdleAnimationActivity: View {
                 .frame(width: size, height: size)
                 .scaleEffect(x: goingRight ? 1 : -1, y: 1)
                 .offset(x: CGFloat(progress) * travel)
-                .frame(width: trackWidth, height: height, alignment: .leading)
+                .frame(width: trackWidth, height: areaHeight, alignment: .bottomLeading)
         }
     }
 }
@@ -211,6 +218,15 @@ struct IdleAnimationSettingsSection: View {
             }
             Picker("Style", selection: $mode) {
                 ForEach(IdleAnimationMode.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .disabled(fileName.isEmpty)
+            HStack {
+                Text("Size")
+                Slider(value: $scale, in: 1...4, step: 0.25)
+                Text(String(format: "%.2g×", scale))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36)
             }
             .disabled(fileName.isEmpty)
             HStack {
