@@ -35,6 +35,16 @@ struct ClipboardItem: Identifiable, Equatable {
         }
     }
 
+    /// Kind only (never the content) for diagnostics.
+    var logKind: String {
+        switch kind {
+        case .text: return "text"
+        case .image: return "image"
+        case .file: return "file"
+        case .screenshot: return "screenshot"
+        }
+    }
+
     var fileURL: URL? {
         switch kind {
         case .image(let url), .file(let url), .screenshot(let url): return url
@@ -125,6 +135,7 @@ final class ClipboardHistoryManager: ObservableObject {
 
     private func startPolling() {
         guard pollTimer == nil else { return }
+        NSLog("Clipboard history: watching the clipboard")
         lastChangeCount = pasteboard.changeCount
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.checkPasteboard() }
@@ -169,6 +180,7 @@ final class ClipboardHistoryManager: ObservableObject {
     }
 
     private func insert(_ item: ClipboardItem) {
+        NSLog("Clipboard history: captured \(item.logKind)")
         // Move duplicates to the top instead of storing them twice.
         if let index = items.firstIndex(where: { $0.kind == item.kind }) {
             var existing = items.remove(at: index)
@@ -383,11 +395,14 @@ final class ClipboardHistoryManager: ObservableObject {
               let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:])
         else { return nil }
+        // The caches folder can be emptied by macOS or cleaner apps at any time.
+        try? FileManager.default.createDirectory(at: imageCacheDirectory, withIntermediateDirectories: true)
         let url = imageCacheDirectory.appendingPathComponent("\(UUID().uuidString).png")
         do {
             try png.write(to: url)
             return url
         } catch {
+            NSLog("Clipboard history: couldn't save image: \(error.localizedDescription)")
             return nil
         }
     }
